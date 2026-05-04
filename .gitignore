@@ -1,0 +1,57 @@
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# Node / package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.npm
+
+# Build outputs
+/dist/
+/build/
+/out/
+/docs/
+*.d.ts.map
+coverage/
+.nyc_output/
+.eslintcache
+
+# Env
+.env
+.env*.local
+.npmrc
+
+# Logs / temp
+logs/
+*.log
+tmp/
+temp/
+.tmp/
+.temp/
+.node_repl_history
+
+# Project-specific
+sample/
+sample-test/
+test-exec/

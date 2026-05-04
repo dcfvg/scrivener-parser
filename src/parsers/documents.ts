@@ -1,0 +1,475 @@
+import type {
+  ScrivenerDocumentContent,
+  ScrivenerComment,
+  ScrivenerPlaceholder,
+  ScrivenerStyleDefinition,
+} from '../types.js';
+import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
+import { rtfToText } from '../rtf/rtfToText.js';
+import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
+import { extractStyleSpans } from '../rtf/extractStyleSpans.js';
+import { parseRtfContent } from './rtf-content.js';
+import { parseXml } from '../utils/xml.js';
+import { toArray } from '../utils/collections.js';
+import { bufferToBase64 } from '../utils/encoding.js';
+import { guessMimeType } from '../utils/mime.js';
+
+interface DocumentParsingOptions {
+  basePath: string;
+  decodeRtf: boolean;
+  includeBinaryAssets: boolean;
+  extractPlaceholders: boolean;
+  extractStyleIds: boolean;
+  extractStyleSpans: boolean;
+  extractEmbeddedImages: boolean;
+  extractInlineAnnotations: boolean;
+  extractLinkedImages: boolean;
+  extractHyperlinks: boolean;
+  extractBookmarks: boolean;
+  extractFields: boolean;
+  extractTables: boolean;
+  computeTextCounts: boolean;
+  styleDefinitions?: ScrivenerStyleDefinition[];
+}
+
+function joinPath(base: string, child: string): string {
+  return base ? `${base.replace(/\/$/, '')}/${child}` : child;
+}
+
+function parseYesNoFlag(value: unknown): boolean | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value === 'Yes') return true;
+  if (value === 'No') return false;
+  return undefined;
+}
+
+function parseOptionalNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseComments(
+  content: string,
+  options: Pick<
+    DocumentParsingOptions,
+    | 'decodeRtf'
+    | 'extractPlaceholders'
+    | 'extractEmbeddedImages'
+    | 'extractInlineAnnotations'
+    | 'extractLinkedImages'
+    | 'extractHyperlinks'
+    | 'extractBookmarks'
+    | 'extractFields'
+    | 'extractTables'
+    | 'computeTextCounts'
+  >,
+): ScrivenerComment[] {
+  const xml = parseXml<any>(content);
+  const comments = toArray(xml?.Comments?.Comment ?? xml?.Comment);
+  return comments.map((comment: any) => {
+    const raw = comment['#text'] ?? comment._cdata ?? comment.CDATA ?? '';
+    const rawRtf = typeof raw === 'string' ? raw : '';
+    const parsed = rawRtf
+      ? parseRtfContent(rawRtf, {
+          decodeRtf: options.decodeRtf,
+          extractPlaceholders: options.extractPlaceholders,
+          extractEmbeddedImages: options.extractEmbeddedImages,
+          extractInlineAnnotations: options.extractInlineAnnotations,
+          extractLinkedImages: options.extractLinkedImages,
+          extractHyperlinks: options.extractHyperlinks,
+          extractBookmarks: options.extractBookmarks,
+          extractFields: options.extractFields,
+          extractTables: options.extractTables,
+          computeTextCounts: options.computeTextCounts,
+          placeholderSource: 'comment',
+        })
+      : undefined;
+
+    return {
+      id: String(comment.ID ?? comment.Id ?? ''),
+      author: comment.Author,
+      color: comment.Color,
+      isFootnote: parseYesNoFlag(comment.Footnote),
+      number: parseOptionalNumber(comment.Number),
+      collapsed: parseYesNoFlag(comment.Collapsed),
+      rawRtf,
+      text: parsed?.plainText,
+      textWordCount: parsed?.textWordCount,
+      textCharCount: parsed?.textCharCount,
+      paragraphs: parsed?.paragraphs?.length ? parsed.paragraphs : undefined,
+      runs: parsed?.runs?.length ? parsed.runs : undefined,
+      placeholders: parsed?.placeholders,
+      embeddedImages: parsed?.embeddedImages,
+      embeddedPdfs: parsed?.embeddedPdfs,
+      inlineAnnotations: parsed?.inlineAnnotations,
+      linkedImages: parsed?.linkedImages,
+      hyperlinks: parsed?.hyperlinks,
+      bookmarks: parsed?.bookmarks,
+      fields: parsed?.fields,
+      commentAnchors: parsed?.commentAnchors,
+      footnotes: parsed?.footnotes,
+      lists: parsed?.lists,
+      assets: parsed?.assets,
+      rtfModel: parsed?.rtfModel,
+      tables: parsed?.tables,
+    };
+  });
+}
+
+function linkCommentAnchors(document: ScrivenerDocumentContent): void {
+  if (!document.comments?.length) {
+    return;
+  }
+  if (!document.commentAnchors?.length) {
+    document.comments = document.comments.map((comment) => ({
+      ...comment,
+      hasAnchors: false,
+    }));
+    return;
+  }
+
+  const commentIndexById = new Map(
+    document.comments.map((comment, index) => [comment.id, index] as const),
+  );
+  const anchorFieldIndexesByComment = new Map<number, number[]>();
+
+  document.commentAnchors = document.commentAnchors.map((anchor) => {
+    const commentIndex = commentIndexById.get(anchor.commentId);
+    if (commentIndex === undefined) {
+      return anchor;
+    }
+    const fieldIndexes = anchorFieldIndexesByComment.get(commentIndex) ?? [];
+    fieldIndexes.push(anchor.fieldIndex);
+    anchorFieldIndexesByComment.set(commentIndex, fieldIndexes);
+    return {
+      ...anchor,
+      commentIndex,
+    };
+  });
+
+  document.comments = document.comments.map((comment, index) => {
+    const anchorFieldIndexes = anchorFieldIndexesByComment.get(index);
+    if (!anchorFieldIndexes?.length) {
+      return {
+        ...comment,
+        hasAnchors: false,
+      };
+    }
+    return {
+      ...comment,
+      anchorFieldIndexes,
+      hasAnchors: true,
+    };
+  });
+
+  if (document.rtfModel?.commentAnchors) {
+    document.rtfModel = {
+      ...document.rtfModel,
+      commentAnchors: document.commentAnchors,
+    };
+  }
+}
+
+function parseStyleIds(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[;, \r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function annotateParagraphStyleIds(document: ScrivenerDocumentContent): void {
+  const paragraphs = document.paragraphs;
+  const spans = document.styleSpans?.filter((span) => span.kind === 'paragraph');
+  if (!paragraphs?.length || !spans?.length) {
+    return;
+  }
+
+  let offset = 0;
+  document.paragraphs = paragraphs.map((paragraph) => {
+    const start = offset;
+    const end = start + paragraph.text.length;
+    offset = end + 1;
+
+    const styleId = spans.find((span) => span.end > start && span.start < end)?.id;
+    if (!styleId) {
+      return paragraph;
+    }
+    return {
+      ...paragraph,
+      styleId,
+    };
+  });
+}
+
+function resolveDirectiveStyleId(styleRef: string | undefined, styleIds?: string[]): string | undefined {
+  const normalized = String(styleRef ?? '').trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const directiveIndex = Number.parseInt(normalized, 10);
+  if (Number.isFinite(directiveIndex) && Array.isArray(styleIds) && directiveIndex >= 0) {
+    return styleIds[directiveIndex] || undefined;
+  }
+  return normalized;
+}
+
+function annotateInlineAnnotationStyleIds(document: ScrivenerDocumentContent): void {
+  if (!document.inlineAnnotations?.length) {
+    return;
+  }
+
+  document.inlineAnnotations = document.inlineAnnotations.map((annotation) => {
+    if (annotation.styleId) {
+      return annotation;
+    }
+    const styleId = resolveDirectiveStyleId(annotation.styleRef, document.styleIds);
+    return styleId
+      ? {
+          ...annotation,
+          styleId,
+        }
+      : annotation;
+  });
+
+  if (document.rtfModel) {
+    document.rtfModel = {
+      ...document.rtfModel,
+      annotations: document.inlineAnnotations,
+    };
+  }
+}
+
+function resolveStyleRefs(
+  ids: string[],
+  definitions?: ScrivenerStyleDefinition[],
+) {
+  if (!ids.length) return undefined;
+  if (!definitions?.length) {
+    return ids.map((id) => ({ id }));
+  }
+  const map = new Map(
+    definitions.filter((style) => style.id).map((style) => [String(style.id), style.name]),
+  );
+  const refs = ids.map((id) => ({ id, name: map.get(id) }));
+  return refs;
+}
+
+export function parseDocuments(
+  archive: ScrivenerArchive,
+  options: DocumentParsingOptions,
+): Record<string, ScrivenerDocumentContent> {
+  const prefix = joinPath(options.basePath, 'Files/Data');
+  const files = archive
+    .list(prefix)
+    .filter((path) => path.startsWith(`${prefix}/`));
+  const grouped = new Map<string, string[]>();
+  for (const file of files) {
+    const relative = file.slice(prefix.length + 1);
+    const [uuid, rest] = relative.split('/', 2);
+    if (!uuid || !rest) {
+      continue;
+    }
+    if (!grouped.has(uuid)) {
+      grouped.set(uuid, []);
+    }
+    grouped.get(uuid)!.push(rest);
+  }
+
+  const documents: Record<string, ScrivenerDocumentContent> = {};
+  for (const [uuid, docFiles] of grouped.entries()) {
+    const base = joinPath(`${prefix}`, uuid);
+    const document: ScrivenerDocumentContent = {
+      uuid,
+      path: joinPath('Files/Data', uuid),
+      hasText: false,
+    };
+    const knownFiles = new Set<string>();
+    const placeholders: ScrivenerPlaceholder[] = [];
+
+    const stylesPath = `${base}/content.styles`;
+    if (archive.has(stylesPath)) {
+      document.styles = archive.readText(stylesPath);
+      if (options.extractStyleIds) {
+        const ids = parseStyleIds(document.styles);
+        if (ids.length) {
+          document.styleIds = ids;
+          const refs = resolveStyleRefs(ids, options.styleDefinitions);
+          if (refs) {
+            document.styleRefs = refs;
+          }
+        }
+      }
+      knownFiles.add('content.styles');
+    }
+
+    const notesStylesPath = `${base}/notes.styles`;
+    if (archive.has(notesStylesPath)) {
+      document.notesStyles = archive.readText(notesStylesPath);
+      if (options.extractStyleIds) {
+        const ids = parseStyleIds(document.notesStyles);
+        if (ids.length) {
+          document.notesStyleIds = ids;
+          const refs = resolveStyleRefs(ids, options.styleDefinitions);
+          if (refs) {
+            document.notesStyleRefs = refs;
+          }
+        }
+      }
+      knownFiles.add('notes.styles');
+    }
+
+    const contentPath = `${base}/content.rtf`;
+    if (archive.has(contentPath)) {
+      const rtf = archive.readText(contentPath);
+      document.textRtf = rtf;
+      document.hasText = true;
+      const parsedContent = parseRtfContent(rtf, {
+        decodeRtf: options.decodeRtf,
+        extractPlaceholders: options.extractPlaceholders,
+        extractEmbeddedImages: options.extractEmbeddedImages,
+        extractInlineAnnotations: options.extractInlineAnnotations,
+        extractLinkedImages: options.extractLinkedImages,
+        extractHyperlinks: options.extractHyperlinks,
+        extractBookmarks: options.extractBookmarks,
+        extractFields: options.extractFields,
+        extractTables: options.extractTables,
+        computeTextCounts: options.computeTextCounts,
+        placeholderSource: 'text',
+      });
+      document.rtfModel = parsedContent.rtfModel;
+      document.paragraphs = parsedContent.paragraphs;
+      document.runs = parsedContent.runs;
+      if (parsedContent.plainText !== undefined) {
+        document.textPlain = parsedContent.plainText;
+      }
+      if (parsedContent.textWordCount !== undefined) {
+        document.textWordCount = parsedContent.textWordCount;
+      }
+      if (parsedContent.textCharCount !== undefined) {
+        document.textCharCount = parsedContent.textCharCount;
+      }
+      if (parsedContent.placeholders?.length) {
+        placeholders.push(...parsedContent.placeholders);
+      }
+      if (options.extractStyleSpans && options.decodeRtf) {
+        document.styleSpans = extractStyleSpans(
+          rtf,
+          document.textPlain,
+          options.styleDefinitions,
+          document.styleIds,
+        );
+        annotateParagraphStyleIds(document);
+      }
+      if (parsedContent.embeddedImages) {
+        document.embeddedImages = parsedContent.embeddedImages;
+      }
+      if (parsedContent.embeddedPdfs) {
+        document.embeddedPdfs = parsedContent.embeddedPdfs;
+      }
+      if (parsedContent.inlineAnnotations) {
+        document.inlineAnnotations = parsedContent.inlineAnnotations;
+        annotateInlineAnnotationStyleIds(document);
+      }
+      if (parsedContent.linkedImages) {
+        document.linkedImages = parsedContent.linkedImages;
+      }
+      if (parsedContent.hyperlinks) {
+        document.hyperlinks = parsedContent.hyperlinks;
+      }
+      if (parsedContent.bookmarks) {
+        document.bookmarks = parsedContent.bookmarks;
+      }
+      if (parsedContent.fields) {
+        document.fields = parsedContent.fields;
+      }
+      if (parsedContent.commentAnchors) {
+        document.commentAnchors = parsedContent.commentAnchors;
+      }
+      if (parsedContent.footnotes) {
+        document.footnotes = parsedContent.footnotes;
+      }
+      if (parsedContent.lists) {
+        document.lists = parsedContent.lists;
+      }
+      if (parsedContent.assets) {
+        document.assets = parsedContent.assets;
+      }
+      if (parsedContent.tables) {
+        document.tables = parsedContent.tables;
+      }
+      knownFiles.add('content.rtf');
+    }
+
+    const notesPath = `${base}/notes.rtf`;
+    if (archive.has(notesPath)) {
+      const rtf = archive.readText(notesPath);
+      document.notesRtf = rtf;
+      if (options.decodeRtf) {
+        document.notesPlain = rtfToText(rtf);
+      }
+      if (options.extractStyleSpans && options.decodeRtf && document.notesPlain) {
+        document.notesStyleSpans = extractStyleSpans(
+          rtf,
+          document.notesPlain,
+          options.styleDefinitions,
+          document.notesStyleIds,
+        );
+      }
+      if (options.extractPlaceholders) {
+        placeholders.push(
+          ...extractPlaceholders(rtf, 'notes', options.decodeRtf ? document.notesPlain : undefined),
+        );
+      }
+      knownFiles.add('notes.rtf');
+    }
+
+    const synopsisPath = `${base}/synopsis.txt`;
+    if (archive.has(synopsisPath)) {
+      document.synopsis = archive.readText(synopsisPath).trim();
+      knownFiles.add('synopsis.txt');
+    }
+
+    const commentsPath = `${base}/content.comments`;
+    if (archive.has(commentsPath)) {
+      const raw = archive.readText(commentsPath);
+      document.comments = parseComments(raw, options);
+      knownFiles.add('content.comments');
+    }
+
+    const attachments: NonNullable<ScrivenerDocumentContent['files']> = [];
+    for (const file of docFiles) {
+      if (knownFiles.has(file)) {
+        continue;
+      }
+      const fullPath = `${base}/${file}`;
+      if (!archive.has(fullPath)) {
+        continue;
+      }
+      if (options.includeBinaryAssets) {
+        const data = archive.readBinary(fullPath);
+        attachments.push({
+          path: file,
+          base64: bufferToBase64(data),
+          contentType: guessMimeType(file),
+        });
+      } else {
+        attachments.push({ path: file });
+      }
+    }
+
+    if (attachments.length) {
+      document.files = attachments;
+    }
+    if (placeholders.length) {
+      document.placeholders = placeholders;
+    }
+
+    linkCommentAnchors(document);
+
+    documents[uuid] = document;
+  }
+
+  return documents;
+}
