@@ -14,7 +14,7 @@ import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
 
-interface DocumentParsingOptions {
+export interface DocumentParsingOptions {
   basePath: string;
   decodeRtf: boolean;
   includeBinaryAssets: boolean;
@@ -30,6 +30,7 @@ interface DocumentParsingOptions {
   extractTables: boolean;
   computeTextCounts: boolean;
   styleDefinitions?: ScrivenerStyleDefinition[];
+  documentIds?: string[];
 }
 
 function joinPath(base: string, child: string): string {
@@ -261,9 +262,20 @@ export function parseDocuments(
   options: DocumentParsingOptions,
 ): Record<string, ScrivenerDocumentContent> {
   const prefix = joinPath(options.basePath, 'Files/Data');
-  const files = archive
+  const requestedIds = new Set((options.documentIds || [])
+    .map((id) => String(id || '').trim())
+    .map((id) => id.toLowerCase())
+    .filter(Boolean));
+  const allFiles = archive
     .list(prefix)
     .filter((path) => path.startsWith(`${prefix}/`));
+  const files = requestedIds.size
+    ? allFiles.filter((file) => {
+        const relative = file.slice(prefix.length + 1);
+        const [uuid] = relative.split('/', 1);
+        return requestedIds.has(String(uuid || '').toLowerCase());
+      })
+    : allFiles;
   const grouped = new Map<string, string[]>();
   for (const file of files) {
     const relative = file.slice(prefix.length + 1);

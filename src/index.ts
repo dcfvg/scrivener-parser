@@ -50,7 +50,10 @@ export type {
   ScrivenerRtfAsset,
   ScrivenerRtfModel,
 } from './types.js';
+export type { DocumentParsingOptions } from './parsers/documents.js';
 export { parseProject as parseScrivenerProject } from './parsers/project.js';
+export { parseDocuments as parseScrivenerDocuments } from './parsers/documents.js';
+export { parseResources as parseScrivenerResources } from './parsers/resources.js';
 export {
   collectPlaceholders,
   findCollectionMatches,

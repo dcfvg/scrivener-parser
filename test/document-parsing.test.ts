@@ -4,6 +4,38 @@ import assert from 'node:assert/strict';
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseDocuments } from '../src/parsers/documents.js';
 
+const BASE_PARSE_OPTIONS = {
+  basePath: '',
+  decodeRtf: true,
+  includeBinaryAssets: false,
+  extractPlaceholders: false,
+  extractStyleIds: false,
+  extractStyleSpans: false,
+  extractEmbeddedImages: false,
+  extractInlineAnnotations: false,
+  extractLinkedImages: false,
+  extractHyperlinks: false,
+  extractBookmarks: false,
+  extractFields: false,
+  extractTables: false,
+  computeTextCounts: false,
+};
+
+test('parseDocuments can limit parsing to selected document ids', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Files/Data/DOC-1/content.rtf': '{\\rtf1\\ansi Un.}',
+    'Files/Data/DOC-2/content.rtf': '{\\rtf1\\ansi Deux.}',
+  });
+
+  const documents = parseDocuments(archive, {
+    ...BASE_PARSE_OPTIONS,
+    documentIds: ['DOC-2'],
+  });
+
+  assert.deepEqual(Object.keys(documents), ['DOC-2']);
+  assert.equal(documents['DOC-2']?.textPlain, 'Deux.');
+});
+
 test('links comment anchors to parsed comments without circular references', () => {
   const archive = ScrivenerArchive.fromFileMap({
     'Files/Data/DOC-1/content.rtf':
