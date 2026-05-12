@@ -138,6 +138,20 @@ test('annotates paragraph metadata from leading Scrivener directives', () => {
   assert.equal(extras.paragraphs[1]?.headerLevel, undefined);
 });
 
+test('annotates the paragraph after an RTF page break', () => {
+  const rtf = String.raw`{\rtf1\ansi Avant\
+\page \pard {$SCRImageLink[w:3840;h:2160]=/tmp/figure.jpg}\
+Apres}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.equal(extras.paragraphs.length, 3);
+  assert.equal(extras.paragraphs[0]?.text, 'Avant');
+  assert.equal(extras.paragraphs[1]?.text, '$SCRImageLink[w:3840;h:2160]=/tmp/figure.jpg');
+  assert.equal(extras.paragraphs[1]?.pageBreakBefore, true);
+  assert.equal(extras.paragraphs[2]?.pageBreakBefore, undefined);
+});
+
 test('extracts embedded Scrivener pdf assets without leaking filename text', () => {
   const rtf = String.raw`{\rtf1\ansi Avant {\*\scrivenerpdf {\*\pdffilename sample.pdf}} apres}`;
 

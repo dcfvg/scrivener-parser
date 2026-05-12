@@ -68,6 +68,7 @@ export function buildCompilePlan(
         includeSynopses: layout?.include?.synopses,
         includeNotes: layout?.include?.notes,
         includeText: layout?.include?.text,
+        separators: layout?.separators,
       };
 
       if (node.children.length) {

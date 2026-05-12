@@ -88,6 +88,12 @@ test('buildCompilePlan resolves the selected compile layout for each binder node
               titles: true,
               text: true,
             },
+            separators: {
+              before: {
+                type: 'PageBreak',
+                use: true,
+              },
+            },
             includeTitles: true,
             placeholdersUsed: [],
           },
@@ -126,6 +132,7 @@ test('buildCompilePlan resolves the selected compile layout for each binder node
     includeSynopses: undefined,
     includeNotes: undefined,
     includeText: undefined,
+    separators: undefined,
   });
 
   assert.deepEqual(plan?.byBinderUuid['doc-1'], {
@@ -142,6 +149,12 @@ test('buildCompilePlan resolves the selected compile layout for each binder node
     includeSynopses: undefined,
     includeNotes: undefined,
     includeText: true,
+    separators: {
+      before: {
+        type: 'PageBreak',
+        use: true,
+      },
+    },
   });
 
   assert.deepEqual(plan?.byBinderUuid['doc-2'], {
@@ -158,6 +171,7 @@ test('buildCompilePlan resolves the selected compile layout for each binder node
     includeSynopses: undefined,
     includeNotes: true,
     includeText: undefined,
+    separators: undefined,
   });
 
   assert.deepEqual(plan?.byBinderUuid['doc-3'], {
@@ -174,5 +188,6 @@ test('buildCompilePlan resolves the selected compile layout for each binder node
     includeSynopses: undefined,
     includeNotes: undefined,
     includeText: undefined,
+    separators: undefined,
   });
 });

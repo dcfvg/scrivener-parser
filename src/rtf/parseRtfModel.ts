@@ -55,6 +55,7 @@ const INTERNAL_SCRIVENER_MARKUP_RE = /(?:<!?\$Scr(?!vFn:)[^>\n]+>|\{?\$SCRImageL
 interface InternalParagraph {
   runs: ScrivenerTextRun[];
   list?: Omit<ScrivenerRtfList, 'paragraphIndex'>;
+  pageBreakBefore?: boolean;
 }
 
 interface FieldScratch {
@@ -136,25 +137,42 @@ function trimParagraph(paragraph: InternalParagraph): InternalParagraph {
   };
 }
 
+function paragraphHasText(paragraph: InternalParagraph): boolean {
+  return Boolean(paragraphText(paragraph));
+}
+
 function normalizeParagraphs(
   paragraphs: InternalParagraph[],
 ): { paragraphs: ScrivenerParagraph[]; runs: ScrivenerTextRun[]; lists: ScrivenerRtfList[]; plainText: string } {
   const trimmed = paragraphs.map((paragraph) => trimParagraph(paragraph));
-  while (trimmed.length && !paragraphText(trimmed[0])) {
-    trimmed.shift();
+  while (trimmed.length && !paragraphHasText(trimmed[0])) {
+    const removed = trimmed.shift();
+    if (removed?.pageBreakBefore && trimmed[0]) {
+      trimmed[0].pageBreakBefore = true;
+    }
   }
-  while (trimmed.length && !paragraphText(trimmed[trimmed.length - 1])) {
+  while (trimmed.length && !paragraphHasText(trimmed[trimmed.length - 1])) {
     trimmed.pop();
   }
 
   const collapsed: InternalParagraph[] = [];
+  let pendingPageBreakBefore = false;
   for (const paragraph of trimmed) {
-    const isEmpty = !paragraphText(paragraph);
+    if (paragraph.pageBreakBefore) {
+      pendingPageBreakBefore = true;
+    }
+    const isEmpty = !paragraphHasText(paragraph);
     const previous = collapsed[collapsed.length - 1];
     if (isEmpty && previous && !paragraphText(previous)) {
       continue;
     }
-    collapsed.push(paragraph);
+    collapsed.push({
+      ...paragraph,
+      pageBreakBefore: pendingPageBreakBefore || paragraph.pageBreakBefore,
+    });
+    if (!isEmpty) {
+      pendingPageBreakBefore = false;
+    }
   }
 
   const normalizedParagraphs: ScrivenerParagraph[] = [];
@@ -171,6 +189,9 @@ function normalizeParagraphs(
     }
     if (directiveState.headerLevel !== undefined) {
       outputParagraph.headerLevel = directiveState.headerLevel;
+    }
+    if (paragraph.pageBreakBefore) {
+      outputParagraph.pageBreakBefore = true;
     }
     if (paragraph.list && outputParagraph.text) {
       lists.push({
@@ -647,6 +668,15 @@ export function parseRtfModel(content: string): ParsedRtfModel {
     paragraphs.push(createParagraph());
   };
 
+  const markNextParagraphPageBreak = () => {
+    let current = paragraphs[paragraphs.length - 1];
+    if (paragraphHasText(current)) {
+      current = createParagraph();
+      paragraphs.push(current);
+    }
+    current.pageBreakBefore = true;
+  };
+
   for (const token of tokens) {
     if (token.type === 'group-start') {
       const parent = groupStack[groupStack.length - 1];
@@ -815,6 +845,9 @@ export function parseRtfModel(content: string): ParsedRtfModel {
 
     if (token.type === 'control-word') {
       switch (token.word) {
+        case 'page':
+          markNextParagraphPageBreak();
+          break;
         case 'par':
         case 'line':
           pushParagraphBreak();
