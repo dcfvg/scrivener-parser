@@ -176,6 +176,7 @@ export interface ScrivenerParagraph {
   styleId?: string;
   keepWithNext?: boolean;
   headerLevel?: number;
+  pageBreakBefore?: boolean;
 }
 
 export interface ScrivenerInlineAnnotation {
@@ -651,6 +652,11 @@ export interface ScrivenerCompilePlanEntry {
   includeSynopses?: boolean;
   includeNotes?: boolean;
   includeText?: boolean;
+  separators?: {
+    before?: ScrivenerCompileSeparatorSetting;
+    between?: ScrivenerCompileSeparatorSetting;
+    afterOverride?: ScrivenerCompileSeparatorSetting;
+  };
 }
 
 export interface ScrivenerCompilePlan {
