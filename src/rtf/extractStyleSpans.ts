@@ -705,10 +705,69 @@ function stripIgnoredRtfLineBreaks(value: string): string {
   return String(value ?? '').replace(/[\r\n]+/g, '');
 }
 
+type DirectCharacterFormatPart = 'bold' | 'italic' | 'underline';
+
+const DIRECT_CHARACTER_FORMAT_ORDER: Array<[DirectCharacterFormatPart, (state: {
+  directBold: boolean;
+  directItalic: boolean;
+  directUnderline: boolean;
+}) => boolean]> = [
+  ['bold', (state) => state.directBold],
+  ['italic', (state) => state.directItalic],
+  ['underline', (state) => state.directUnderline],
+];
+
+function buildDirectRtfCharacterStyleName(state: {
+  directBold: boolean;
+  directItalic: boolean;
+  directUnderline: boolean;
+}): string | undefined {
+  const parts = DIRECT_CHARACTER_FORMAT_ORDER
+    .filter(([, isEnabled]) => isEnabled(state))
+    .map(([part]) => part);
+  return parts.length ? `rtf-${parts.join('-')}` : undefined;
+}
+
+const UNDERLINE_ON_CONTROL_WORDS = new Set([
+  'ul',
+  'uld',
+  'uldash',
+  'uldashd',
+  'uldashdd',
+  'uldb',
+  'ulhair',
+  'ulhwave',
+  'ulldash',
+  'ulstyle',
+  'ulth',
+  'ulthd',
+  'ulthdash',
+  'ulthdashd',
+  'ulthdashdd',
+  'ulthldash',
+  'ululdbwave',
+  'ulw',
+  'ulwave',
+]);
+
+function resolveUnderlineControlWord(word: string, param?: string): boolean | undefined {
+  if (word === 'ulnone') {
+    return false;
+  }
+  if (word === 'ulc') {
+    return undefined;
+  }
+  if (UNDERLINE_ON_CONTROL_WORDS.has(word)) {
+    return param !== '0';
+  }
+  return undefined;
+}
+
 function resolveCharacterSpan(
   current: string | undefined,
   directItalic: boolean,
   directBold: boolean,
+  directUnderline: boolean,
   nameMap?: Map<string, string>,
   styleMap?: Map<string, string>,
 ): { id?: string; name?: string } {
@@ -718,14 +777,13 @@ function resolveCharacterSpan(
       name: current,
     };
   }
-  if (directItalic && directBold) {
-    return { id: 'rtf-bold-italic', name: 'rtf-bold-italic' };
-  }
-  if (directItalic) {
-    return { id: 'rtf-italic', name: 'rtf-italic' };
-  }
-  if (directBold) {
-    return { id: 'rtf-bold', name: 'rtf-bold' };
+  const name = buildDirectRtfCharacterStyleName({
+    directBold,
+    directItalic,
+    directUnderline,
+  });
+  if (name) {
+    return { id: name, name };
   }
   return {};
 }
@@ -770,6 +828,7 @@ function parseCharacterStyleSpans(
     currentCharStyle: string | undefined;
     directItalic: boolean;
     directBold: boolean;
+    directUnderline: boolean;
     uc: number;
     skipAscii: number;
     ignore: boolean;
@@ -781,6 +840,7 @@ function parseCharacterStyleSpans(
   let skipAscii = 0;
   let directItalic = false;
   let directBold = false;
+  let directUnderline = false;
   const annotState = createScrivenerAnnotationState();
   let rawText = '';
 
@@ -789,7 +849,7 @@ function parseCharacterStyleSpans(
     const start = pos.index;
     rawText += value;
     pos.index += value.length;
-    const resolved = resolveCharacterSpan(current, directItalic, directBold, nameMap, styleMap);
+    const resolved = resolveCharacterSpan(current, directItalic, directBold, directUnderline, nameMap, styleMap);
     if (!resolved.id) return;
     const last = spans[spans.length - 1];
     if (last && last.kind === 'character' && last.id === resolved.id && last.end === start) {
@@ -812,6 +872,7 @@ function parseCharacterStyleSpans(
         currentCharStyle,
         directItalic,
         directBold,
+        directUnderline,
         uc,
         skipAscii,
         ignore: parent?.ignore ?? false,
@@ -826,6 +887,7 @@ function parseCharacterStyleSpans(
         currentCharStyle = previous.currentCharStyle;
         directItalic = previous.directItalic;
         directBold = previous.directBold;
+        directUnderline = previous.directUnderline;
         uc = previous.uc;
         skipAscii = previous.skipAscii;
       }
@@ -859,6 +921,7 @@ function parseCharacterStyleSpans(
         currentCharStyle = undefined;
         directItalic = false;
         directBold = false;
+        directUnderline = false;
         continue;
       }
       if (token.word === 'cs' && token.param) {
@@ -871,6 +934,11 @@ function parseCharacterStyleSpans(
       }
       if (token.word === 'b') {
         directBold = token.param !== '0';
+        continue;
+      }
+      const underlineState = resolveUnderlineControlWord(token.word, token.param);
+      if (underlineState !== undefined) {
+        directUnderline = underlineState;
         continue;
       }
       if (token.word === 'uc' && token.param !== undefined) {

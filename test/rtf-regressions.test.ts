@@ -259,6 +259,49 @@ test('ignores formatting line breaks and captures direct italic runs', () => {
   });
 });
 
+test('captures direct underline runs and combines them with bold and italic', () => {
+  const rtf = '{\\rtf1\\ansi Un \\ul souligne\\ulnone  puis \\b\\i\\ul tout\\ulnone\\i0\\b0 .}';
+  const plainText = rtfToText(rtf);
+  const spans = extractStyleSpans(rtf, plainText, []).filter((span) => span.kind === 'character');
+
+  assert.equal(plainText, 'Un souligne puis tout.');
+  assert.deepEqual(spans, [
+    {
+      id: 'rtf-underline',
+      name: 'rtf-underline',
+      kind: 'character',
+      start: 3,
+      end: 11,
+    },
+    {
+      id: 'rtf-bold-italic-underline',
+      name: 'rtf-bold-italic-underline',
+      kind: 'character',
+      start: 17,
+      end: 21,
+    },
+  ]);
+});
+
+test('normalizes RTF underline variants and ignores underline color controls', () => {
+  const rtf = '{\\rtf1\\ansi A {\\uldb double} B\\ulc1{} couleur C {\\ulwave vague} D {\\ulstyle1 style} E {\\ulfoo inconnu} fin}';
+  const plainText = rtfToText(rtf);
+  const spans = extractStyleSpans(rtf, plainText, []).filter((span) => span.kind === 'character');
+
+  assert.equal(plainText, 'A double B couleur C vague D style E inconnu fin');
+  assert.deepEqual(
+    spans.map((span) => ({
+      id: span.id,
+      text: plainText.slice(span.start, span.end),
+    })),
+    [
+      { id: 'rtf-underline', text: 'double' },
+      { id: 'rtf-underline', text: 'vague' },
+      { id: 'rtf-underline', text: 'style' },
+    ],
+  );
+});
+
 test('keeps direct italic offsets aligned after embedded Scrivener annotations', () => {
   const rtf = String.raw`{\rtf1\ansi {\Scrv_annot \text=<$ScrKeepWithNext><$Scr_Ps::0>Annotation interne \end_Scrv_annot}\i Floating University \i0 suite}`;
   const plainText = rtfToText(rtf);
