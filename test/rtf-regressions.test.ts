@@ -220,10 +220,7 @@ test('decodes RTF hex byte runs with ansicpg950 Big5', () => {
 test('decodes RTF hex byte runs with ansicpg932 Shift-JIS', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932 \'83\'65\'83\'58\'83\'67}`);
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(parsed.plainText, 'テスト');
   assert.equal(parsed.paragraphs[0].text, 'テスト');
@@ -236,10 +233,7 @@ test('does not treat Shift-JIS trail byte 0x5c as an RTF control prefix', () => 
     asciiBytes(' test}'),
   );
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(parsed.plainText, 'ソ test');
 });
@@ -247,10 +241,7 @@ test('does not treat Shift-JIS trail byte 0x5c as an RTF control prefix', () => 
 test('honors uc fallback length after unicode control words', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\uc2\u233?? after}`);
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(parsed.plainText, 'é after');
 });
@@ -258,10 +249,7 @@ test('honors uc fallback length after unicode control words', () => {
 test('removes multibyte unicode fallbacks without shifting following text', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932\uc2\u12477\'83\'5c after}`);
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(decodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg932\uc0\u12477{} after}`);
   assert.equal(parsed.plainText, 'ソ after');
@@ -271,10 +259,7 @@ test('combines unicode surrogate pairs for emoji escapes', () => {
   const rtf = String.raw`{\rtf1\ansi Emoji \u-10179?\u-8704? end}`;
   const bytes = asciiBytes(rtf);
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(rtfToText(rtf), 'Emoji 😀 end');
   assert.equal(parsed.plainText, 'Emoji 😀 end');
@@ -287,10 +272,7 @@ test('keeps RTF groups stable across bin payload bytes', () => {
     asciiBytes(String.raw`} After}`),
   );
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
-    rtfBytes: bytes,
-  });
+  const parsed = parseRtfContent(bytes);
 
   assert.equal(parsed.plainText, 'Before  After');
 });
@@ -302,10 +284,8 @@ test('normalizes pict bin payloads to hex for embedded image extraction', () => 
     asciiBytes('}}'),
   );
 
-  const parsed = parseRtfContent('', {
-    decodeRtf: true,
+  const parsed = parseRtfContent(bytes, {
     extractEmbeddedImages: true,
-    rtfBytes: bytes,
   });
 
   assert.equal(parsed.embeddedImages?.length, 1);
@@ -397,6 +377,51 @@ test('normalizes linked image paths inside the library', () => {
     'file://localhost/tmp/2017-04%20—%20(sample)/image%20one.jpg',
   );
   assert.equal(extras.assets[0]?.source, 'external');
+});
+
+test('splits consecutive unbraced Scrivener image links before following markup', () => {
+  const rtf = String.raw`{\rtf1\ansi $SCRImageLink[w:10;h:20]=/tmp/one.jpg$SCRImageLink[w:30;h:40]=/tmp/two.jpg<!$Scr_Ps::0>}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.equal(extras.linkedImages.length, 2);
+  assert.deepEqual(
+    extras.linkedImages.map((image) => ({
+      path: image.path,
+      rawPath: image.rawPath,
+      width: image.width,
+      height: image.height,
+    })),
+    [
+      {
+        path: '/tmp/one.jpg',
+        rawPath: '/tmp/one.jpg',
+        width: 10,
+        height: 20,
+      },
+      {
+        path: '/tmp/two.jpg',
+        rawPath: '/tmp/two.jpg',
+        width: 30,
+        height: 40,
+      },
+    ],
+  );
+  assert.equal(extras.assets.filter((asset) => asset.type === 'linked-image').length, 2);
+  assert.ok(extras.linkedImages.every((image) => !image.path.includes('$SCRImageLink')));
+  assert.ok(extras.linkedImages.every((image) => !image.path.includes('<$Scr')));
+});
+
+test('stops unbraced Scrivener image links at media extensions before caption text', () => {
+  const rtf = String.raw`{\rtf1\ansi $SCRImageLink[w:595;h:200]=/tmp/FICO.psdFig. Caption text}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.equal(extras.linkedImages.length, 1);
+  assert.equal(extras.linkedImages[0]?.path, '/tmp/FICO.psd');
+  assert.equal(extras.linkedImages[0]?.rawPath, '/tmp/FICO.psd');
+  assert.equal(extras.linkedImages[0]?.raw, '$SCRImageLink[w:595;h:200]=/tmp/FICO.psd');
+  assert.match(extras.plainText, /Fig\. Caption text/);
 });
 
 test('distinguishes $PROJECT linked images and tolerates malformed duplicated path prefixes', () => {

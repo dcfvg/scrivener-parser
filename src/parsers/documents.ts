@@ -13,7 +13,6 @@ import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
-import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 
 export interface DocumentParsingOptions {
   basePath: string;
@@ -335,10 +334,9 @@ export function parseDocuments(
 
     const contentPath = `${base}/content.rtf`;
     if (archive.has(contentPath)) {
-      const rtf = decodeRtfBytes(archive.readBinary(contentPath));
-      document.textRtf = rtf;
+      const rtfBytes = archive.readRtfBytes(contentPath);
       document.hasText = true;
-      const parsedContent = parseRtfContent(rtf, {
+      const parsedContent = parseRtfContent(rtfBytes, {
         decodeRtf: options.decodeRtf,
         extractPlaceholders: options.extractPlaceholders,
         extractEmbeddedImages: options.extractEmbeddedImages,
@@ -351,6 +349,8 @@ export function parseDocuments(
         computeTextCounts: options.computeTextCounts,
         placeholderSource: 'text',
       });
+      const rtf = parsedContent.rtf;
+      document.textRtf = rtf;
       document.rtfModel = parsedContent.rtfModel;
       document.paragraphs = parsedContent.paragraphs;
       document.runs = parsedContent.runs;
@@ -417,10 +417,16 @@ export function parseDocuments(
 
     const notesPath = `${base}/notes.rtf`;
     if (archive.has(notesPath)) {
-      const rtf = decodeRtfBytes(archive.readBinary(notesPath));
+      const parsedNotes = parseRtfContent(archive.readRtfBytes(notesPath), {
+        decodeRtf: options.decodeRtf,
+        extractPlaceholders: options.extractPlaceholders,
+        computeTextCounts: false,
+        placeholderSource: 'notes',
+      });
+      const rtf = parsedNotes.rtf;
       document.notesRtf = rtf;
       if (options.decodeRtf) {
-        document.notesPlain = rtfToText(rtf);
+        document.notesPlain = parsedNotes.plainText ?? rtfToText(rtf);
       }
       if (options.extractStyleSpans && options.decodeRtf && document.notesPlain) {
         document.notesStyleSpans = extractStyleSpans(
@@ -432,7 +438,7 @@ export function parseDocuments(
       }
       if (options.extractPlaceholders) {
         placeholders.push(
-          ...extractPlaceholders(rtf, 'notes', options.decodeRtf ? document.notesPlain : undefined),
+          ...(parsedNotes.placeholders || extractPlaceholders(rtf, 'notes', options.decodeRtf ? document.notesPlain : undefined)),
         );
       }
       knownFiles.add('notes.rtf');

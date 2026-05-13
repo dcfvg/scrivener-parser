@@ -87,6 +87,7 @@ RTF files are decoded from bytes so `\ansicpgN` code pages and consecutive `\'xx
 ```ts
 import {
   decodeRtfBytes,
+  parseRtfContent,
   parseRtfPropertiesFromBytes,
   rtfToText,
   tokenizeRtfBytes,
@@ -94,8 +95,13 @@ import {
 
 const tokenized = tokenizeRtfBytes(rtfBytes);
 const properties = parseRtfPropertiesFromBytes(rtfBytes);
+const parsed = parseRtfContent(rtfBytes);
 const text = rtfToText(rtfBytes);
 ```
+
+### Style spans
+
+`styleSpans` use stable semantic ids. When an RTF stylesheet entry matches a Scrivener style definition by name, `span.id` is the Scrivener style id and `span.name` is the Scrivener style name. When no Scrivener definition is available, `span.id` and `span.name` fall back to the canonical RTF stylesheet name. Direct RTF formatting keeps renderer-neutral ids such as `rtf-bold`, `rtf-italic`, `rtf-underline`, or combined variants.
 
 ## Exports
 

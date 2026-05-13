@@ -92,6 +92,13 @@ export class ScrivenerArchive {
   }
 
   /**
+   * Read an RTF file as raw bytes so callers can decode it with its RTF code page.
+   */
+  readRtfBytes(path: string): Uint8Array {
+    return this.readBinary(path);
+  }
+
+  /**
    * Read a file as UTF-8 text.
    */
   readText(path: string): string {

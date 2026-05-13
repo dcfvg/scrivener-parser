@@ -3,6 +3,7 @@ import type { RtfToken } from './tokenizeRtf.js';
 import {
   DEFAULT_RTF_CODE_PAGE,
   parseRtfPropertiesFromBytes,
+  parseRtfPropertiesFromTokens,
   type RtfProperties,
 } from './properties.js';
 
@@ -196,8 +197,8 @@ export function decodeRtfTextBytes(bytes: Uint8Array, codePage = DEFAULT_RTF_COD
 }
 
 export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
-  const properties = parseRtfPropertiesFromBytes(bytes);
-  const codePage = properties.codePage;
+  const byteProperties = parseRtfPropertiesFromBytes(bytes);
+  const codePage = byteProperties.codePage;
   const tokens: RtfToken[] = [];
   let rtf = '';
   let textBuffer = '';
@@ -405,6 +406,7 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
   }
 
   flushText();
+  const properties = parseRtfPropertiesFromTokens(tokens);
   return { rtf, tokens, properties };
 }
 

@@ -20,7 +20,7 @@ import { extractRtfExtras } from '../rtf/extractExtras.js';
 import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 
 export interface ParsedRtfContentOptions {
-  decodeRtf: boolean;
+  decodeRtf?: boolean;
   extractPlaceholders?: boolean;
   extractEmbeddedImages?: boolean;
   extractInlineAnnotations?: boolean;
@@ -31,10 +31,10 @@ export interface ParsedRtfContentOptions {
   extractTables?: boolean;
   computeTextCounts?: boolean;
   placeholderSource?: 'text' | 'notes' | 'comment';
-  rtfBytes?: Uint8Array;
 }
 
 export interface ParsedRtfContent {
+  rtf: string;
   plainText?: string;
   textWordCount?: number;
   textCharCount?: number;
@@ -65,14 +65,15 @@ function countWords(text: string | undefined): number | undefined {
 }
 
 export function parseRtfContent(
-  rtf: string,
-  options: ParsedRtfContentOptions,
+  rtf: string | Uint8Array,
+  options: ParsedRtfContentOptions = {},
 ): ParsedRtfContent {
-  const sourceRtf = options.rtfBytes ? decodeRtfBytes(options.rtfBytes) : rtf;
+  const sourceRtf = typeof rtf === 'string' ? rtf : decodeRtfBytes(rtf);
   const extras = extractRtfExtras(sourceRtf);
-  const plainText = options.decodeRtf ? extras.plainText : undefined;
+  const plainText = options.decodeRtf !== false ? extras.plainText : undefined;
 
   const parsed: ParsedRtfContent = {
+    rtf: sourceRtf,
     plainText,
     textWordCount: options.computeTextCounts ? countWords(plainText) : undefined,
     textCharCount: options.computeTextCounts && plainText ? plainText.length : undefined,

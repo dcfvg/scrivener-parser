@@ -4,6 +4,15 @@ import { decodeWindows1252Byte, normalizeMediaPath } from '../utils/encoding.js'
 const TOKEN_PREFIX = '$SCRImageLink[';
 const ABSOLUTE_PATH_PREFIX_RE = /^(?:\$PROJECT:\/\/|[A-Za-z]+:\/\/|\/|[A-Za-z]:[\/])/;
 const PROJECT_REFERENCE_RE = /^\$PROJECT:\/\/([^./?#]+)(?:\.([^/?#]+))?$/i;
+const UNBRACED_PATH_TERMINATORS = [
+  '\n',
+  '\r',
+  '}',
+  TOKEN_PREFIX,
+  '<$Scr',
+  '<!$Scr',
+];
+const MEDIA_FILE_EXTENSION_RE = /\.(?:jpe?g|png|gif|tiff?|bmp|webp|heic|pdf|psd|ai|eps|svg)/gi;
 
 export interface ParsedScrImageLinkToken extends ScrivenerLinkedImage {
   attrsRaw: string;
@@ -42,6 +51,32 @@ function classifyPath(path: string): Pick<ScrivenerLinkedImage, 'source' | 'targ
   return { source: 'external' };
 }
 
+function findUnbracedRawPathEnd(text: string, start: number): number {
+  let end = text.length;
+  for (const terminator of UNBRACED_PATH_TERMINATORS) {
+    const index = text.indexOf(terminator, start);
+    if (index !== -1 && index < end) {
+      end = index;
+    }
+  }
+
+  MEDIA_FILE_EXTENSION_RE.lastIndex = 0;
+  let extensionEnd = -1;
+  const candidate = text.slice(start, end);
+  let match: RegExpExecArray | null;
+  while ((match = MEDIA_FILE_EXTENSION_RE.exec(candidate)) !== null) {
+    extensionEnd = start + match.index + match[0].length;
+  }
+  if (extensionEnd !== -1 && extensionEnd < end) {
+    const tail = text.slice(extensionEnd, end);
+    if (!tail.startsWith('?') && !tail.startsWith('#')) {
+      return extensionEnd;
+    }
+  }
+
+  return end;
+}
+
 export function readScrImageLinkTokenAt(text: string, start: number): ParsedScrImageLinkToken | null {
   let cursor = start;
   const hasOuterBrace = text[cursor] === '{';
@@ -73,13 +108,7 @@ export function readScrImageLinkTokenAt(text: string, start: number): ParsedScrI
       return null;
     }
   } else {
-    while (rawPathEnd < text.length) {
-      const char = text[rawPathEnd];
-      if (char === '\n' || char === '\r' || char === '}') {
-        break;
-      }
-      rawPathEnd += 1;
-    }
+    rawPathEnd = findUnbracedRawPathEnd(text, cursor);
   }
 
   const rawPath = sanitizeRawPath(text.slice(cursor, rawPathEnd));

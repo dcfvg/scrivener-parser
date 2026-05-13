@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseDocuments } from '../src/parsers/documents.js';
+import { parseProject } from '../src/parsers/project.js';
 
 const BASE_PARSE_OPTIONS = {
   basePath: '',
@@ -20,6 +21,10 @@ const BASE_PARSE_OPTIONS = {
   extractTables: false,
   computeTextCounts: false,
 };
+
+function asciiBytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
 
 test('parseDocuments can limit parsing to selected document ids', () => {
   const archive = ScrivenerArchive.fromFileMap({
@@ -224,4 +229,73 @@ test('resolves inline annotation style ids from parser directives and preserves 
   assert.equal(typeof document.linkedImages?.[0]?.start, 'number');
   assert.equal(typeof document.linkedImages?.[0]?.end, 'number');
   assert.equal(document.rtfModel?.annotations?.[0]?.styleId, 'STYLE-DATE');
+});
+
+test('parseProject resolves RTF stylesheet spans to Scrivener style ids after byte decoding', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject>
+  <Binder>
+    <BinderItem UUID="DRAFT" Type="DraftFolder">
+      <Title>Draft</Title>
+      <Children>
+        <BinderItem UUID="DOC-BYTE" Type="Text"><Title>Byte styled text</Title></BinderItem>
+      </Children>
+    </BinderItem>
+  </Binder>
+</ScrivenerProject>`,
+    'Files/styles.xml': String.raw`<Styles>
+  <Style><ID>STYLE-ACCENT</ID><Name>Accent</Name><Type>Char</Type></Style>
+</Styles>`,
+    'Files/Data/DOC-BYTE/content.rtf': asciiBytes(String.raw`{\rtf1\ansi\ansicpg950{\stylesheet{\cs1 Accent;}}Before {\cs1 \'b4\'fa\'b8\'d5} after}`),
+  });
+
+  const project = parseProject(archive, {
+    decodeRtf: true,
+    loadSnapshots: false,
+    extractStyleSpans: true,
+  });
+  const document = project.documents['DOC-BYTE'];
+  const accentSpan = document?.styleSpans?.find((span) => span.kind === 'character');
+
+  assert.equal(document?.textPlain, 'Before 測試 after');
+  assert.deepEqual(accentSpan, {
+    id: 'STYLE-ACCENT',
+    name: 'Accent',
+    kind: 'character',
+    start: 7,
+    end: 9,
+  });
+});
+
+test('parseProject keeps unmatched RTF stylesheet spans as canonical names', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject>
+  <Binder>
+    <BinderItem UUID="DRAFT" Type="DraftFolder">
+      <Title>Draft</Title>
+      <Children>
+        <BinderItem UUID="DOC-RTF" Type="Text"><Title>RTF styled text</Title></BinderItem>
+      </Children>
+    </BinderItem>
+  </Binder>
+</ScrivenerProject>`,
+    'Files/styles.xml': '<Styles/>',
+    'Files/Data/DOC-RTF/content.rtf': String.raw`{\rtf1\ansi{\stylesheet{\cs2 Template Character;}}Before {\cs2 fallback} after}`,
+  });
+
+  const project = parseProject(archive, {
+    decodeRtf: true,
+    loadSnapshots: false,
+    extractStyleSpans: true,
+  });
+  const document = project.documents['DOC-RTF'];
+  const fallbackSpan = document?.styleSpans?.find((span) => span.kind === 'character');
+
+  assert.deepEqual(fallbackSpan, {
+    id: 'Template Character',
+    name: 'Template Character',
+    kind: 'character',
+    start: 7,
+    end: 15,
+  });
 });

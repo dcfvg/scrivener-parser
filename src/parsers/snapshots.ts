@@ -3,7 +3,6 @@ import type { ScrivenerSnapshot } from '../types.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { rtfToText } from '../rtf/rtfToText.js';
-import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 import { parseRtfContent } from './rtf-content.js';
 
 interface SnapshotOptions {
@@ -33,7 +32,7 @@ interface SnapshotMeta {
 interface SnapshotRtfEntry {
   file: string;
   date?: string;
-  content: string;
+  content: Uint8Array;
 }
 
 function dedupeSnapshotMeta(entries: SnapshotMeta[]): SnapshotMeta[] {
@@ -116,8 +115,8 @@ function buildSnapshotFromEntry(
   return {
     title: meta.title,
     date: meta.date ?? entry.date,
-    rtf: entry.content,
-    plainText: parsed.plainText ?? meta.text ?? rtfToText(entry.content),
+    rtf: parsed.rtf,
+    plainText: parsed.plainText ?? meta.text ?? rtfToText(parsed.rtf),
     sourceFile: entry.file,
     hasText: true,
     textWordCount: parsed.textWordCount,
@@ -181,7 +180,7 @@ export function parseSnapshots(
       .map((file) => ({
         file,
         date: filenameToDate(file),
-        content: decodeRtfBytes(archive.readBinary(`${base}/${file}`)),
+        content: archive.readRtfBytes(`${base}/${file}`),
       }));
     const rtfByDate = new Map<string, SnapshotRtfEntry>();
     for (const entry of rtfEntries) {
