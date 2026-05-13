@@ -270,9 +270,55 @@ export interface ScrivenerRtfAsset {
   raw?: string;
 }
 
+export type ScrivenerRtfCharacterSet = 'ansi' | 'mac' | 'pc' | 'pca' | 'unknown';
+
+export type ScrivenerRtfFontFamily =
+  | 'default'
+  | 'roman'
+  | 'swiss'
+  | 'modern'
+  | 'script'
+  | 'decor'
+  | 'tech'
+  | 'bidi';
+
+export interface ScrivenerRtfFont {
+  index: number;
+  family: ScrivenerRtfFontFamily;
+  charset?: number;
+  name: string;
+}
+
+export interface ScrivenerRtfColor {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+export type ScrivenerRtfStyleType = 'paragraph' | 'character' | 'section';
+
+export interface ScrivenerRtfStyle {
+  index: number;
+  name: string;
+  type: ScrivenerRtfStyleType;
+  basedOn?: number;
+  next?: number;
+}
+
+export interface ScrivenerRtfProperties {
+  rtfVersion?: number;
+  characterSet: ScrivenerRtfCharacterSet;
+  codePage: number;
+  defaultFont?: number;
+  fontTable: ScrivenerRtfFont[];
+  colorTable: ScrivenerRtfColor[];
+  stylesheet: ScrivenerRtfStyle[];
+}
+
 export interface ScrivenerRtfModel {
   paragraphs: ScrivenerParagraph[];
   runs: ScrivenerTextRun[];
+  properties?: ScrivenerRtfProperties;
   fields: ScrivenerField[];
   commentAnchors: ScrivenerCommentAnchor[];
   footnotes: ScrivenerFootnote[];

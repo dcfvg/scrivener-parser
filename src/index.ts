@@ -48,12 +48,23 @@ export type {
   ScrivenerFootnote,
   ScrivenerRtfList,
   ScrivenerRtfAsset,
+  ScrivenerRtfCharacterSet,
+  ScrivenerRtfColor,
+  ScrivenerRtfFont,
+  ScrivenerRtfFontFamily,
   ScrivenerRtfModel,
+  ScrivenerRtfProperties,
+  ScrivenerRtfStyle,
+  ScrivenerRtfStyleType,
 } from './types.js';
 export type { DocumentParsingOptions } from './parsers/documents.js';
 export { parseProject as parseScrivenerProject } from './parsers/project.js';
 export { parseDocuments as parseScrivenerDocuments } from './parsers/documents.js';
 export { parseResources as parseScrivenerResources } from './parsers/resources.js';
+export { parseRtfContent } from './parsers/rtf-content.js';
+export type { ParsedRtfContent, ParsedRtfContentOptions } from './parsers/rtf-content.js';
+export { decodeRtfBytes, decodeRtfTextBytes, rtfEncodingLabelForCodePage } from './rtf/byteTokenizer.js';
+export { rtfToText } from './rtf/rtfToText.js';
 export {
   collectPlaceholders,
   findCollectionMatches,

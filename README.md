@@ -80,6 +80,10 @@ Returns a `ParsedScrivenerProject` with the following fields:
 }
 ```
 
+### RTF bytes
+
+RTF files are decoded from bytes so `\ansicpgN` code pages and consecutive `\'xx` escapes are handled before text extraction. For direct RTF use, `rtfToText()` accepts either a string or `Uint8Array`; `decodeRtfBytes()` returns a normalized RTF string.
+
 ## Exports
 
 | Entry point | Contents |

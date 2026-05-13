@@ -81,6 +81,7 @@ export function parseRtfContent(
     rtfModel: {
       paragraphs: extras.paragraphs,
       runs: extras.runs,
+      properties: extras.properties,
       fields: extras.fields,
       commentAnchors: extras.commentAnchors,
       footnotes: extras.footnotes,

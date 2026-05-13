@@ -8,6 +8,7 @@ import type {
   ScrivenerLinkedImage,
   ScrivenerParagraph,
   ScrivenerRtfList,
+  ScrivenerRtfProperties,
   ScrivenerTextRun,
   ScrivenerTextRunSource,
 } from '../types.js';
@@ -20,10 +21,12 @@ import {
 import { tokenizeRtf, type RtfToken } from './tokenizeRtf.js';
 import { extractLeadingScrivenerParagraphDirectiveState } from './parseScrivenerDirectives.js';
 import { readScrImageLinkTokenAt } from './parseScrImageLink.js';
+import { parseRtfPropertiesFromTokens } from './properties.js';
 
 const IGNORE_DESTINATIONS = new Set([
   'fonttbl',
   'colortbl',
+  'expandedcolortbl',
   'stylesheet',
   'info',
   'object',
@@ -84,6 +87,7 @@ export interface ParsedRtfModel {
   plainText: string;
   paragraphs: ScrivenerParagraph[];
   runs: ScrivenerTextRun[];
+  properties: ScrivenerRtfProperties;
   fields: ScrivenerField[];
   commentAnchors: ScrivenerCommentAnchor[];
   footnotes: ScrivenerFootnote[];
@@ -646,6 +650,7 @@ function preprocessEmbeddedScrivenerMarkup(content: string): {
 export function parseRtfModel(content: string): ParsedRtfModel {
   const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
   const tokens = tokenizeRtf(preprocessed.content);
+  const properties = parseRtfPropertiesFromTokens(tokens);
   const paragraphs: InternalParagraph[] = [createParagraph()];
   const groupStack: GroupState[] = [];
   const fields: ScrivenerField[] = [];
@@ -932,6 +937,7 @@ export function parseRtfModel(content: string): ParsedRtfModel {
     plainText: normalized.plainText.trim(),
     paragraphs: normalized.paragraphs,
     runs: normalized.runs,
+    properties,
     fields,
     commentAnchors,
     footnotes,

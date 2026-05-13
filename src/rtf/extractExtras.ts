@@ -11,6 +11,7 @@ import type {
   ScrivenerParagraph,
   ScrivenerRtfAsset,
   ScrivenerRtfList,
+  ScrivenerRtfProperties,
   ScrivenerTextRun,
 } from '../types.js';
 import { parseRtfModel } from './parseRtfModel.js';
@@ -19,6 +20,7 @@ export interface RtfExtras {
   plainText: string;
   paragraphs: ScrivenerParagraph[];
   runs: ScrivenerTextRun[];
+  properties: ScrivenerRtfProperties;
   embeddedImages: ScrivenerEmbeddedImage[];
   embeddedPdfs: ScrivenerEmbeddedPdf[];
   linkedImages: ScrivenerLinkedImage[];
@@ -105,6 +107,7 @@ export function extractRtfExtras(rtf: string): RtfExtras {
     plainText: model.plainText,
     paragraphs: model.paragraphs,
     runs: model.runs,
+    properties: model.properties,
     embeddedImages: model.embeddedImages,
     embeddedPdfs: model.embeddedPdfs,
     linkedImages,

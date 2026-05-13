@@ -58,6 +58,38 @@ function isHexByte(byte: number | undefined): boolean {
   );
 }
 
+function isDbcsLeadByte(codePage: number, byte: number | undefined): boolean {
+  if (byte === undefined) {
+    return false;
+  }
+  switch (codePage) {
+    case 932:
+      return (byte >= 0x81 && byte <= 0x9f) || (byte >= 0xe0 && byte <= 0xfc);
+    case 936:
+    case 949:
+    case 950:
+      return byte >= 0x81 && byte <= 0xfe;
+    default:
+      return false;
+  }
+}
+
+function isDbcsTrailByte(codePage: number, byte: number | undefined): boolean {
+  if (byte === undefined) {
+    return false;
+  }
+  switch (codePage) {
+    case 932:
+      return (byte >= 0x40 && byte <= 0x7e) || (byte >= 0x80 && byte <= 0xfc);
+    case 936:
+    case 949:
+    case 950:
+      return byte >= 0x40 && byte <= 0xfe && byte !== 0x7f;
+    default:
+      return false;
+  }
+}
+
 function hexValue(byte: number): number {
   if (byte >= 0x30 && byte <= 0x39) {
     return byte - 0x30;
@@ -78,6 +110,61 @@ function bytesToAscii(bytes: Uint8Array, start: number, end: number): string {
     result += ascii(bytes[index]);
   }
   return result;
+}
+
+function bytesToHex(bytes: Uint8Array, start: number, end: number): string {
+  let result = '';
+  for (let index = start; index < end; index += 1) {
+    result += bytes[index].toString(16).padStart(2, '0').toUpperCase();
+  }
+  return result;
+}
+
+function parseInteger(value: string | undefined): number | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function needsControlBoundary(byte: number | undefined): boolean {
+  return byte === 0x20 || isDigitByte(byte);
+}
+
+function skipUnicodeFallback(bytes: Uint8Array, start: number, count: number, codePage: number): number {
+  let index = start;
+  let remaining = Math.max(0, count);
+  while (index < bytes.length && remaining > 0) {
+    const byte = bytes[index];
+    if (byte === 0x5c) {
+      const next = bytes[index + 1];
+      if (next === 0x27 && isHexByte(bytes[index + 2]) && isHexByte(bytes[index + 3])) {
+        index += 4;
+        remaining -= 1;
+        continue;
+      }
+      if (next === 0x5c || next === 0x7b || next === 0x7d) {
+        index += 2;
+        remaining -= 1;
+        continue;
+      }
+      if (next !== undefined && !isAlphaByte(next)) {
+        index += 2;
+        remaining -= 1;
+        continue;
+      }
+      break;
+    }
+    if (isDbcsLeadByte(codePage, byte) && isDbcsTrailByte(codePage, bytes[index + 1])) {
+      index += 2;
+      remaining = Math.max(0, remaining - 2);
+      continue;
+    }
+    index += 1;
+    remaining -= 1;
+  }
+  return index;
 }
 
 export function rtfEncodingLabelForCodePage(codePage: number | undefined): string {
@@ -115,6 +202,9 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
   let rtf = '';
   let textBuffer = '';
   let textStart = 0;
+  let uc = 1;
+  const ucStack: number[] = [];
+  let outputUcZero = false;
 
   const appendText = (value: string) => {
     if (!value) {
@@ -154,15 +244,25 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
     tokens.push({ ...token, start, end: rtf.length });
   };
 
+  const pushEmptyGroup = () => {
+    flushText();
+    const start = rtf.length;
+    rtf += '{}';
+    tokens.push({ type: 'group-start', start, end: start + 1 });
+    tokens.push({ type: 'group-end', start: start + 1, end: start + 2 });
+  };
+
   for (let index = 0; index < bytes.length; index += 1) {
     const byte = bytes[index];
 
     if (byte === 0x7b) {
       pushSyntax('{', { type: 'group-start' });
+      ucStack.push(uc);
       continue;
     }
     if (byte === 0x7d) {
       pushSyntax('}', { type: 'group-end' });
+      uc = ucStack.pop() ?? uc;
       continue;
     }
 
@@ -170,6 +270,11 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
       const values: number[] = [];
       let end = index;
       while (end < bytes.length && bytes[end] !== 0x5c && bytes[end] !== 0x7b && bytes[end] !== 0x7d) {
+        if (isDbcsLeadByte(codePage, bytes[end]) && isDbcsTrailByte(codePage, bytes[end + 1])) {
+          values.push(bytes[end], bytes[end + 1]);
+          end += 2;
+          continue;
+        }
         values.push(bytes[end]);
         end += 1;
       }
@@ -248,6 +353,29 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
     const hasSpace = bytes[paramEnd] === 0x20;
     const end = paramEnd + (hasSpace ? 1 : 0);
     const param = paramEnd > wordEnd ? bytesToAscii(bytes, wordEnd, paramEnd) : undefined;
+    if (word === 'uc') {
+      uc = Math.max(0, parseInteger(param) ?? 1);
+      outputUcZero = true;
+      pushSyntax(`\\uc0${hasSpace ? ' ' : ''}`, {
+        type: 'control-word',
+        word,
+        param: '0',
+        hasParam: true,
+        hasSpace,
+      });
+      index = end - 1;
+      continue;
+    }
+    if (word === 'u' && param !== undefined && !outputUcZero) {
+      pushSyntax('\\uc0', {
+        type: 'control-word',
+        word: 'uc',
+        param: '0',
+        hasParam: true,
+        hasSpace: false,
+      });
+      outputUcZero = true;
+    }
     pushSyntax(bytesToAscii(bytes, index, end), {
       type: 'control-word',
       word,
@@ -255,6 +383,24 @@ export function tokenizeRtfBytes(bytes: Uint8Array): ByteTokenizedRtf {
       hasParam: param !== undefined,
       hasSpace,
     });
+    if (word === 'u' && param !== undefined && uc > 0) {
+      const fallbackEnd = skipUnicodeFallback(bytes, end, uc, codePage);
+      if (needsControlBoundary(bytes[fallbackEnd])) {
+        pushEmptyGroup();
+      }
+      index = fallbackEnd - 1;
+      continue;
+    }
+    if (word === 'bin') {
+      const byteCount = Math.max(0, parseInteger(param) ?? 0);
+      if (byteCount > 0) {
+        const binaryStart = end;
+        const binaryEnd = Math.min(bytes.length, binaryStart + byteCount);
+        appendText(bytesToHex(bytes, binaryStart, binaryEnd));
+        index = binaryEnd - 1;
+        continue;
+      }
+    }
     index = end - 1;
   }
 

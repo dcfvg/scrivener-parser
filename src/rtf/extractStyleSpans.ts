@@ -98,7 +98,6 @@ function buildStyleMap(tokens: RtfToken[]): Map<string, string> {
     }
     if (token.type === 'group-end') {
       if (sheetDepth === 0) {
-        // Leaving stylesheet group
         inStylesheet = false;
         currentId = undefined;
         currentName = '';
@@ -113,7 +112,6 @@ function buildStyleMap(tokens: RtfToken[]): Map<string, string> {
       (token.word === 's' || token.word === 'cs') &&
       token.param
     ) {
-      // New style definition (paragraph or character)
       const normalizedName = normalizeStyleName(currentName);
       if (currentId !== undefined && normalizedName) {
         map.set(currentId, normalizedName);

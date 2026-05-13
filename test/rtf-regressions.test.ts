@@ -20,6 +20,17 @@ function asciiBytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
+function concatBytes(...chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((size, chunk) => size + chunk.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
 test('extracts Scrivener comment anchors from hyperlink fields', () => {
   const rtf = readFixture('test', 'fixtures', 'comment-anchors.rtf');
 
@@ -131,6 +142,53 @@ test('extracts embedded images from pict groups', () => {
   assert.ok((extras.embeddedImages[0]?.base64?.length ?? 0) > 10);
 });
 
+test('extracts RTF document properties from font, color and style tables', () => {
+  const rtf = String.raw`{\rtf1\ansi\ansicpg950\deff1
+{\fonttbl{\f0\froman\fcharset0 Times New Roman;}{\f1\fswiss Helvetica;}}
+{\colortbl;\red255\green0\blue0;\red0\green128\blue64;}
+{\stylesheet{\s0\sbasedon0\snext1 Normal;}{\cs2 Character Accent;}{\ds3 Section Style;}}
+\s0 Texte}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.equal(extras.properties.rtfVersion, 1);
+  assert.equal(extras.properties.characterSet, 'ansi');
+  assert.equal(extras.properties.codePage, 950);
+  assert.equal(extras.properties.defaultFont, 1);
+  assert.deepEqual(extras.properties.fontTable, [
+    { index: 0, family: 'roman', charset: 0, name: 'Times New Roman' },
+    { index: 1, family: 'swiss', name: 'Helvetica' },
+  ]);
+  assert.deepEqual(extras.properties.colorTable, [
+    { red: 0, green: 0, blue: 0 },
+    { red: 255, green: 0, blue: 0 },
+    { red: 0, green: 128, blue: 64 },
+  ]);
+  assert.deepEqual(extras.properties.stylesheet, [
+    { index: 0, type: 'paragraph', basedOn: 0, next: 1, name: 'Normal' },
+    { index: 2, type: 'character', name: 'Character Accent' },
+    { index: 3, type: 'section', name: 'Section Style' },
+  ]);
+});
+
+test('extracts inline RTF font table entries', () => {
+  const rtf = String.raw`{\rtf1\ansi{\fonttbl\f0\fnil\fcharset0 Cochin;}\f0 Texte}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.deepEqual(extras.properties.fontTable, [
+    { index: 0, family: 'default', charset: 0, name: 'Cochin' },
+  ]);
+});
+
+test('ignores Cocoa expanded color table destination text', () => {
+  const rtf = String.raw`{\rtf1\ansi{\expandedcolortbl;;\cssrgb\c0\c0\c0;}Visible}`;
+
+  const extras = extractRtfExtras(rtf);
+
+  assert.equal(extras.plainText, 'Visible');
+});
+
 test('decodes RTF hex byte runs with ansicpg950 Big5', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg950 \'b4\'fa\'b8\'d5}`);
 
@@ -153,6 +211,21 @@ test('decodes RTF hex byte runs with ansicpg932 Shift-JIS', () => {
   assert.equal(parsed.paragraphs[0].text, 'テスト');
 });
 
+test('does not treat Shift-JIS trail byte 0x5c as an RTF control prefix', () => {
+  const bytes = concatBytes(
+    asciiBytes(String.raw`{\rtf1\ansi\ansicpg932 `),
+    new Uint8Array([0x83, 0x5c]),
+    asciiBytes(' test}'),
+  );
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(parsed.plainText, 'ソ test');
+});
+
 test('honors uc fallback length after unicode control words', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\uc2\u233?? suite}`);
 
@@ -162,6 +235,64 @@ test('honors uc fallback length after unicode control words', () => {
   });
 
   assert.equal(parsed.plainText, 'é suite');
+});
+
+test('removes multibyte unicode fallbacks without shifting following text', () => {
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932\uc2\u12477\'83\'5c suite}`);
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(decodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg932\uc0\u12477{} suite}`);
+  assert.equal(parsed.plainText, 'ソ suite');
+});
+
+test('combines unicode surrogate pairs for emoji escapes', () => {
+  const rtf = String.raw`{\rtf1\ansi Emoji \u-10179?\u-8704? fin}`;
+  const bytes = asciiBytes(rtf);
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(rtfToText(rtf), 'Emoji 😀 fin');
+  assert.equal(parsed.plainText, 'Emoji 😀 fin');
+});
+
+test('keeps RTF groups stable across bin payload bytes', () => {
+  const bytes = concatBytes(
+    asciiBytes(String.raw`{\rtf1\ansi Before {\*\unknown\bin4 `),
+    new Uint8Array([0x7b, 0x7d, 0x5c, 0x00]),
+    asciiBytes(String.raw`} After}`),
+  );
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(parsed.plainText, 'Before  After');
+});
+
+test('normalizes pict bin payloads to hex for embedded image extraction', () => {
+  const bytes = concatBytes(
+    asciiBytes(String.raw`{\rtf1\ansi{\pict\pngblip\bin8 `),
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    asciiBytes('}}'),
+  );
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    extractEmbeddedImages: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(parsed.embeddedImages?.length, 1);
+  assert.equal(parsed.embeddedImages?.[0].format, 'png');
+  assert.match(parsed.embeddedImages?.[0].base64 ?? '', /^iVBOR/);
 });
 
 test('annotates paragraph metadata from leading Scrivener directives', () => {
