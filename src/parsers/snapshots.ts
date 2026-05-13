@@ -3,6 +3,7 @@ import type { ScrivenerSnapshot } from '../types.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { rtfToText } from '../rtf/rtfToText.js';
+import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 import { parseRtfContent } from './rtf-content.js';
 
 interface SnapshotOptions {
@@ -180,7 +181,7 @@ export function parseSnapshots(
       .map((file) => ({
         file,
         date: filenameToDate(file),
-        content: archive.readText(`${base}/${file}`),
+        content: decodeRtfBytes(archive.readBinary(`${base}/${file}`)),
       }));
     const rtfByDate = new Map<string, SnapshotRtfEntry>();
     for (const entry of rtfEntries) {

@@ -4,6 +4,10 @@ import assert from 'node:assert/strict';
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseSnapshots } from '../src/parsers/snapshots.js';
 
+function asciiBytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
 test('deduplicates snapshot metadata and parses snapshots through the shared RTF pipeline', () => {
   const archive = ScrivenerArchive.fromFileMap({
     'Snapshots/DOC-1.snapshots/index.xml': `<?xml version="1.0" encoding="UTF-8"?>
@@ -45,4 +49,21 @@ test('deduplicates snapshot metadata and parses snapshots through the shared RTF
   assert.ok((snapshot?.runs?.length ?? 0) >= 2);
   assert.equal(snapshot?.rtfModel?.paragraphs.length, 2);
   assert.deepEqual(snapshot?.placeholders?.map((placeholder) => placeholder.value), ['<$projecttitle>']);
+});
+
+test('decodes snapshot RTF from bytes before parsing', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Snapshots/DOC-2.snapshots/2025-01-02-12-00-00+0100.rtf': asciiBytes(
+      String.raw`{\rtf1\ansi\ansicpg932 \'83\'65\'83\'58\'83\'67}`,
+    ),
+  });
+
+  const snapshots = parseSnapshots(archive, {
+    basePath: '',
+    decodeRtf: true,
+  });
+
+  const snapshot = snapshots['DOC-2']?.[0];
+  assert.equal(snapshot?.plainText, 'テスト');
+  assert.equal(snapshot?.paragraphs?.[0].text, 'テスト');
 });

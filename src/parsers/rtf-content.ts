@@ -17,6 +17,7 @@ import type {
 } from '../types.js';
 import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { extractRtfExtras } from '../rtf/extractExtras.js';
+import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 
 export interface ParsedRtfContentOptions {
   decodeRtf: boolean;
@@ -30,6 +31,7 @@ export interface ParsedRtfContentOptions {
   extractTables?: boolean;
   computeTextCounts?: boolean;
   placeholderSource?: 'text' | 'notes' | 'comment';
+  rtfBytes?: Uint8Array;
 }
 
 export interface ParsedRtfContent {
@@ -66,7 +68,8 @@ export function parseRtfContent(
   rtf: string,
   options: ParsedRtfContentOptions,
 ): ParsedRtfContent {
-  const extras = extractRtfExtras(rtf);
+  const sourceRtf = options.rtfBytes ? decodeRtfBytes(options.rtfBytes) : rtf;
+  const extras = extractRtfExtras(sourceRtf);
   const plainText = options.decodeRtf ? extras.plainText : undefined;
 
   const parsed: ParsedRtfContent = {
@@ -88,7 +91,7 @@ export function parseRtfContent(
       embeddedPdfs: extras.embeddedPdfs,
     },
     placeholders: options.extractPlaceholders
-      ? extractPlaceholders(rtf, options.placeholderSource ?? 'text', plainText)
+      ? extractPlaceholders(sourceRtf, options.placeholderSource ?? 'text', plainText)
       : undefined,
     embeddedImages: options.extractEmbeddedImages && extras.embeddedImages.length
       ? extras.embeddedImages

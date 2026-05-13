@@ -13,6 +13,7 @@ import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
+import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
 
 export interface DocumentParsingOptions {
   basePath: string;
@@ -334,7 +335,7 @@ export function parseDocuments(
 
     const contentPath = `${base}/content.rtf`;
     if (archive.has(contentPath)) {
-      const rtf = archive.readText(contentPath);
+      const rtf = decodeRtfBytes(archive.readBinary(contentPath));
       document.textRtf = rtf;
       document.hasText = true;
       const parsedContent = parseRtfContent(rtf, {
@@ -416,7 +417,7 @@ export function parseDocuments(
 
     const notesPath = `${base}/notes.rtf`;
     if (archive.has(notesPath)) {
-      const rtf = archive.readText(notesPath);
+      const rtf = decodeRtfBytes(archive.readBinary(notesPath));
       document.notesRtf = rtf;
       if (options.decodeRtf) {
         document.notesPlain = rtfToText(rtf);

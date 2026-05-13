@@ -7,11 +7,17 @@ import { extractRtfExtras } from '../src/rtf/extractExtras.js';
 import { extractPlaceholders } from '../src/rtf/extractPlaceholders.js';
 import { extractStyleSpans } from '../src/rtf/extractStyleSpans.js';
 import { rtfToText } from '../src/rtf/rtfToText.js';
+import { decodeRtfBytes, tokenizeRtfBytes } from '../src/rtf/byteTokenizer.js';
+import { parseRtfContent } from '../src/parsers/rtf-content.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
 function readFixture(...segments: string[]): string {
   return fs.readFileSync(path.join(ROOT, ...segments), 'utf8');
+}
+
+function asciiBytes(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
 }
 
 test('extracts Scrivener comment anchors from hyperlink fields', () => {
@@ -123,6 +129,39 @@ test('extracts embedded images from pict groups', () => {
   assert.match(extras.embeddedImages[0]?.base64 ?? '', /^iVBOR/);
   assert.ok(extras.assets.filter((asset) => asset.type === 'embedded-image').length >= 1);
   assert.ok((extras.embeddedImages[0]?.base64?.length ?? 0) > 10);
+});
+
+test('decodes RTF hex byte runs with ansicpg950 Big5', () => {
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg950 \'b4\'fa\'b8\'d5}`);
+
+  const tokenized = tokenizeRtfBytes(bytes);
+
+  assert.equal(tokenized.properties.codePage, 950);
+  assert.equal(decodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg950 ` + '測試}');
+  assert.equal(rtfToText(bytes), '測試');
+});
+
+test('decodes RTF hex byte runs with ansicpg932 Shift-JIS', () => {
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932 \'83\'65\'83\'58\'83\'67}`);
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(parsed.plainText, 'テスト');
+  assert.equal(parsed.paragraphs[0].text, 'テスト');
+});
+
+test('honors uc fallback length after unicode control words', () => {
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\uc2\u233?? suite}`);
+
+  const parsed = parseRtfContent('', {
+    decodeRtf: true,
+    rtfBytes: bytes,
+  });
+
+  assert.equal(parsed.plainText, 'é suite');
 });
 
 test('annotates paragraph metadata from leading Scrivener directives', () => {
