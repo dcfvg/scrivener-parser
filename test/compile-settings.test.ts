@@ -31,18 +31,18 @@ test('parses structured compile settings and compile formats', () => {
         <StartAfterFrontMatter>Yes</StartAfterFrontMatter>
         <Cover>
           <ImageDocument Source="FrontMatter"/>
-          <Title>Couverture synthétique</Title>
+          <Title>Synthetic cover</Title>
           <SVG Width="600" Height="800"><![CDATA[<svg/>]]></SVG>
         </Cover>
         <TOC PandocDepth="2">
           <HTML Generate="Yes">
-            <Title>Sommaire</Title>
+            <Title>Contents</Title>
           </HTML>
         </TOC>
       </Ebook>
     </Options>
     <MetaData>
-      <ProjectTitle>Projet synthétique</ProjectTitle>
+      <ProjectTitle>Synthetic project</ProjectTitle>
       <Authors>
         <Author FileAs="DOE, Jane" Role="aut">Jane Doe</Author>
       </Authors>
@@ -67,14 +67,14 @@ test('parses structured compile settings and compile formats', () => {
     <pdf>FMT-1</pdf>
   </LastUsedFormats>
 </CompileSettings>`,
-    'Settings/Compile Formats/Format synthétique.scrformat': String.raw`<?xml version="1.0" encoding="UTF-8"?>
-<CompileFormat Name="Format synthétique" ID="FMT-1">
+    'Settings/Compile Formats/Synthetic format.scrformat': String.raw`<?xml version="1.0" encoding="UTF-8"?>
+<CompileFormat Name="Synthetic format" ID="FMT-1">
   <SupportedTypes>
     <Type>pdf</Type>
     <Type>docx</Type>
   </SupportedTypes>
   <SectionLayouts>
-    <Layout Name="Chapitre" ID="LAYOUT-1">
+    <Layout Name="Chapter" ID="LAYOUT-1">
       <Include Titles="Yes"/>
       <RTFBookmark>Yes</RTFBookmark>
       <BlankLineSeparator SkipStyles="Yes"><![CDATA[<$separator>]]></BlankLineSeparator>
@@ -82,10 +82,10 @@ test('parses structured compile settings and compile formats', () => {
         <Prefix Case="Uppercase"><![CDATA[<$hn> ]]></Prefix>
       </Titles>
       <Formatting Override="No" EbooksUseBaseFormatting="Yes">
-        <Title><![CDATA[{\rtf1\ansi Titre <$projecttitle>}]]></Title>
-        <TitlePrefix><![CDATA[{\rtf1\ansi Prefixe <$hn>}]]></TitlePrefix>
-        <TitleSuffix><![CDATA[{\rtf1\ansi Suffixe <$sectiontitle>}]]></TitleSuffix>
-        <Text><![CDATA[{\rtf1\ansi Corps <$text>}]]></Text>
+        <Title><![CDATA[{\rtf1\ansi Title <$projecttitle>}]]></Title>
+        <TitlePrefix><![CDATA[{\rtf1\ansi Prefix <$hn>}]]></TitlePrefix>
+        <TitleSuffix><![CDATA[{\rtf1\ansi Suffix <$sectiontitle>}]]></TitleSuffix>
+        <Text><![CDATA[{\rtf1\ansi Body <$text>}]]></Text>
         <PreserveUncommonAlignment>Yes</PreserveUncommonAlignment>
         <PreserveTabsAndIndents>No</PreserveTabsAndIndents>
       </Formatting>
@@ -98,7 +98,7 @@ test('parses structured compile settings and compile formats', () => {
   </SectionLayouts>
   <Styles>
     <Style Name="Body" ID="STYLE-1">
-      <Format><![CDATA[{\rtf1\ansi Corps <$projecttitle>}]]></Format>
+      <Format><![CDATA[{\rtf1\ansi Body <$projecttitle>}]]></Format>
     </Style>
   </Styles>
   <FormattingOptions>
@@ -177,7 +177,7 @@ test('parses structured compile settings and compile formats', () => {
   assert.equal(settings.compile?.options?.ebook?.toc?.html?.generate, true);
   assert.equal(settings.compile?.metadata?.authors[0]?.name, 'Jane Doe');
   assert.deepEqual(settings.compile?.metadata?.placeholdersUsed, ['<$projecttitle>', '<$author>']);
-  assert.equal(settings.compile?.formats['FMT-1']?.name, 'Format synthétique');
+  assert.equal(settings.compile?.formats['FMT-1']?.name, 'Synthetic format');
   assert.equal(settings.compile?.formats['FMT-1']?.sectionLayouts['SECTION-1'], 'LAYOUT-1');
   assert.equal(settings.compile?.formats['FMT-1']?.font, 'BodyFont');
   assert.equal(settings.compile?.selectedFormatId, 'FMT-1');
@@ -185,7 +185,7 @@ test('parses structured compile settings and compile formats', () => {
   assert.equal(settings.compile?.lastUsedFormats.pdf, 'FMT-1');
 
   const compileFormat = settings.compileFormats['FMT-1'];
-  assert.equal(compileFormat?.name, 'Format synthétique');
+  assert.equal(compileFormat?.name, 'Synthetic format');
   assert.deepEqual(compileFormat?.supportedTypes, ['pdf', 'docx']);
   assert.equal(compileFormat?.sectionLayouts[0]?.include?.titles, true);
   assert.equal(compileFormat?.sectionLayouts[0]?.include?.synopses, undefined);
@@ -193,7 +193,7 @@ test('parses structured compile settings and compile formats', () => {
   assert.equal(compileFormat?.sectionLayouts[0]?.include?.text, undefined);
   assert.equal(compileFormat?.sectionLayouts[0]?.titles?.prefix?.case, 'Uppercase');
   assert.equal(compileFormat?.sectionLayouts[0]?.titles?.prefix?.text, '<$hn> ');
-  assert.equal(compileFormat?.sectionLayouts[0]?.formatting?.title?.text, 'Titre <$projecttitle>');
+  assert.equal(compileFormat?.sectionLayouts[0]?.formatting?.title?.text, 'Title <$projecttitle>');
   assert.equal(
     compileFormat?.sectionLayouts[0]?.formatting?.titleSuffix?.placeholdersUsed[0],
     '<$sectiontitle>',
@@ -224,5 +224,5 @@ test('parses structured compile settings and compile formats', () => {
   assert.ok(compileFormat?.placeholdersUsed.includes('<$projecttitle>'));
   assert.ok(compileFormat?.placeholdersUsed.includes('<$pagecount>'));
   assert.equal(settings.compileRaw !== undefined, true);
-  assert.equal(settings.compileFormatsRaw?.['Format synthétique'] !== undefined, true);
+  assert.equal(settings.compileFormatsRaw?.['Synthetic format'] !== undefined, true);
 });

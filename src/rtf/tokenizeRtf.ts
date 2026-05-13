@@ -20,8 +20,8 @@ export type RtfToken =
   | { type: 'control-word'; word: string; param?: string; hasParam: boolean; hasSpace: boolean; start: number; end: number };
 
 /**
- * Tokeniseur RTF minimal qui distingue groupes, mots de contrôle et texte.
- * Suffisant pour des passes d'extraction (placeholders, styles) sans interpréter tout le format.
+ * Minimal RTF tokenizer that separates groups, control words, and text.
+ * Enough for extraction passes (placeholders, styles) without interpreting the full format.
  */
 export function tokenizeRtf(content: string): RtfToken[] {
   const tokens: RtfToken[] = [];

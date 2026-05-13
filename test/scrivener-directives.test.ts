@@ -5,7 +5,7 @@ import { extractLeadingScrivenerParagraphDirectiveState } from '../src/rtf/parse
 
 test('extracts keep-with-next and header level from leading Scrivener directives', () => {
   assert.deepEqual(
-    extractLeadingScrivenerParagraphDirectiveState('<$ScrKeepWithNext><$Scr_H::2><$Scr_Ps::0>Titre'),
+    extractLeadingScrivenerParagraphDirectiveState('<$ScrKeepWithNext><$Scr_H::2><$Scr_Ps::0>Title'),
     {
       keepWithNext: true,
       headerLevel: 2,
@@ -16,11 +16,11 @@ test('extracts keep-with-next and header level from leading Scrivener directives
 
 test('ignores trailing or closing-only directives when deriving paragraph state', () => {
   assert.deepEqual(
-    extractLeadingScrivenerParagraphDirectiveState('<!$Scr_H::2><!$Scr_Ps::0>Texte courant'),
+    extractLeadingScrivenerParagraphDirectiveState('<!$Scr_H::2><!$Scr_Ps::0>Current text'),
     {},
   );
   assert.deepEqual(
-    extractLeadingScrivenerParagraphDirectiveState('Texte <$ScrKeepWithNext>suite'),
+    extractLeadingScrivenerParagraphDirectiveState('Text <$ScrKeepWithNext>after'),
     {},
   );
 });

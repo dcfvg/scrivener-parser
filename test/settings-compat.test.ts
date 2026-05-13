@@ -8,14 +8,14 @@ test('parses template, script format, legacy compile, and ini compatibility file
   const archive = ScrivenerArchive.fromFileMap({
     'Settings/templateinfo.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <TemplateSettings Version="1.0">
-  <Title>Template synthétique</Title>
+  <Title>Synthetic template</Title>
   <Description>Desc</Description>
   <Category>Research</Category>
   <CustomImageData>ABC123</CustomImageData>
 </TemplateSettings>`,
     'Settings/scriptformat.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <ScrivenerScriptFormat>
-  <Title>Script synthétique</Title>
+  <Title>Synthetic script</Title>
   <ScriptElements>
     <Element>
       <Title>Scene Heading</Title>
@@ -28,9 +28,9 @@ test('parses template, script format, legacy compile, and ini compatibility file
 <plist version="1.0">
   <dict>
     <key>SCRTemplateCompileSettingsTitle</key>
-    <string>Preset synthétique</string>
+    <string>Synthetic preset</string>
     <key>SCRCompileDocumentTitleKey</key>
-    <string>Projet</string>
+    <string>Project</string>
   </dict>
 </plist>`,
     'Settings/favorites.xml': `<?xml version="1.0" encoding="UTF-8"?>
@@ -95,13 +95,13 @@ test('parses template, script format, legacy compile, and ini compatibility file
 
   const settings = parseSettings(archive, '');
 
-  assert.equal(settings.templateInfo?.title, 'Template synthétique');
+  assert.equal(settings.templateInfo?.title, 'Synthetic template');
   assert.equal(settings.templateInfo?.category, 'Research');
   assert.equal(settings.templateInfo?.fields.CustomImageData, 'ABC123');
-  assert.equal(settings.scriptFormat?.title, 'Script synthétique');
+  assert.equal(settings.scriptFormat?.title, 'Synthetic script');
   assert.equal((settings.scriptFormat?.scriptElements?.[0] as any)?.Title, 'Scene Heading');
-  assert.equal(settings.legacyCompile?.['2']?.title, 'Preset synthétique');
-  assert.equal(settings.legacyCompile?.['2']?.files['compile.plist']?.SCRCompileDocumentTitleKey, 'Projet');
+  assert.equal(settings.legacyCompile?.['2']?.title, 'Synthetic preset');
+  assert.equal(settings.legacyCompile?.['2']?.files['compile.plist']?.SCRCompileDocumentTitleKey, 'Project');
   assert.equal(settings.favorites?.moveTo?.recent[0]?.uuid, 'UUID-A');
   assert.equal(settings.favorites?.moveTo?.popular[0]?.used, 2);
   assert.equal(settings.projectPreferences?.useProjectPreferences, true);

@@ -8,6 +8,7 @@ import {
   SCRIVENER_FOOTNOTE_TOKEN_RE,
 } from './parseScrivenerInlineMarkup.js';
 import { rtfToText } from './rtfToText.js';
+import { parseRtfPropertiesFromTokens } from './properties.js';
 
 const SCRIVENER_STYLE_DIRECTIVE_RE = /<!?\$Scr(?!vFn:)[^>\n]+>/g;
 
@@ -63,10 +64,6 @@ function getPlaceholderBody(value: string): string {
   return '';
 }
 
-function normalizeStyleName(value: string): string {
-  return String(value ?? '').trim().replace(/;$/, '').trim();
-}
-
 function isInternalScrivenerDirective(value: string): boolean {
   const body = getPlaceholderBody(value);
   return body.startsWith('Scr') && !body.startsWith('ScrvFn:');
@@ -74,71 +71,15 @@ function isInternalScrivenerDirective(value: string): boolean {
 
 function buildStyleMap(tokens: RtfToken[]): Map<string, string> {
   const map = new Map<string, string>();
-  let inStylesheet = false;
-  let sheetDepth = 0;
-  let currentId: string | undefined;
-  let currentName = '';
+  const properties = parseRtfPropertiesFromTokens(tokens);
 
-  for (const token of tokens) {
-    if (token.type === 'control-word' && token.word === 'stylesheet') {
-      inStylesheet = true;
-      sheetDepth = 0;
-      currentId = undefined;
-      currentName = '';
-      continue;
-    }
-
-    if (!inStylesheet) {
-      continue;
-    }
-
-    if (token.type === 'group-start') {
-      sheetDepth += 1;
-      continue;
-    }
-    if (token.type === 'group-end') {
-      if (sheetDepth === 0) {
-        inStylesheet = false;
-        currentId = undefined;
-        currentName = '';
-      } else {
-        sheetDepth -= 1;
-      }
-      continue;
-    }
-
-    if (
-      token.type === 'control-word' &&
-      (token.word === 's' || token.word === 'cs') &&
-      token.param
-    ) {
-      const normalizedName = normalizeStyleName(currentName);
-      if (currentId !== undefined && normalizedName) {
-        map.set(currentId, normalizedName);
-      }
-      currentId = `${token.word}:${token.param}`;
-      currentName = '';
-      continue;
-    }
-
-    if (token.type === 'control-symbol' && token.symbol === ';') {
-      const normalizedName = normalizeStyleName(currentName);
-      if (currentId !== undefined && normalizedName) {
-        map.set(currentId, normalizedName);
-      }
-      currentId = undefined;
-      currentName = '';
-      continue;
-    }
-
-    if (token.type === 'text' && currentId !== undefined) {
-      currentName += token.value;
-    }
-  }
-
-  const normalizedName = normalizeStyleName(currentName);
-  if (currentId !== undefined && normalizedName) {
-    map.set(currentId, normalizedName);
+  for (const style of properties.stylesheet) {
+    const controlWord = style.type === 'character'
+      ? 'cs'
+      : style.type === 'paragraph'
+        ? 's'
+        : 'ds';
+    map.set(`${controlWord}:${style.index}`, style.name);
   }
 
   return map;
@@ -767,12 +708,16 @@ function resolveCharacterSpan(
   directBold: boolean,
   directUnderline: boolean,
   nameMap?: Map<string, string>,
+  idByName?: Map<string, string>,
   styleMap?: Map<string, string>,
 ): { id?: string; name?: string } {
   if (current) {
+    const rtfStyleName = styleMap?.get(`cs:${current}`);
+    const definitionName = nameMap?.get(current);
+    const resolvedName = rtfStyleName ?? definitionName ?? current;
     return {
-      id: nameMap?.get(current) ?? styleMap?.get(`cs:${current}`) ?? current,
-      name: current,
+      id: (rtfStyleName ? idByName?.get(rtfStyleName) : undefined) ?? rtfStyleName ?? current,
+      name: resolvedName,
     };
   }
   const name = buildDirectRtfCharacterStyleName({
@@ -821,6 +766,11 @@ function parseCharacterStyleSpans(
 ): ScrivenerStyleSpan[] {
   const spans: ScrivenerStyleSpan[] = [];
   const nameMap = new Map((definitions ?? []).map((def) => [String(def.id ?? def.name ?? ''), def.name ?? String(def.id ?? '')]));
+  const idByName = new Map(
+    (definitions ?? [])
+      .filter((def) => def.name && def.id !== undefined && def.id !== null && def.id !== '')
+      .map((def) => [String(def.name), String(def.id)] as const),
+  );
   let currentCharStyle: string | undefined;
   const groupStateStack: Array<{
     currentCharStyle: string | undefined;
@@ -847,7 +797,15 @@ function parseCharacterStyleSpans(
     const start = pos.index;
     rawText += value;
     pos.index += value.length;
-    const resolved = resolveCharacterSpan(current, directItalic, directBold, directUnderline, nameMap, styleMap);
+    const resolved = resolveCharacterSpan(
+      current,
+      directItalic,
+      directBold,
+      directUnderline,
+      nameMap,
+      idByName,
+      styleMap,
+    );
     if (!resolved.id) return;
     const last = spans[spans.length - 1];
     if (last && last.kind === 'character' && last.id === resolved.id && last.end === start) {

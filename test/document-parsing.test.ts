@@ -23,8 +23,8 @@ const BASE_PARSE_OPTIONS = {
 
 test('parseDocuments can limit parsing to selected document ids', () => {
   const archive = ScrivenerArchive.fromFileMap({
-    'Files/Data/DOC-1/content.rtf': '{\\rtf1\\ansi Un.}',
-    'Files/Data/DOC-2/content.rtf': '{\\rtf1\\ansi Deux.}',
+    'Files/Data/DOC-1/content.rtf': '{\\rtf1\\ansi One.}',
+    'Files/Data/DOC-2/content.rtf': '{\\rtf1\\ansi Two.}',
   });
 
   const documents = parseDocuments(archive, {
@@ -33,15 +33,15 @@ test('parseDocuments can limit parsing to selected document ids', () => {
   });
 
   assert.deepEqual(Object.keys(documents), ['DOC-2']);
-  assert.equal(documents['DOC-2']?.textPlain, 'Deux.');
+  assert.equal(documents['DOC-2']?.textPlain, 'Two.');
 });
 
 test('links comment anchors to parsed comments without circular references', () => {
   const archive = ScrivenerArchive.fromFileMap({
     'Files/Data/DOC-1/content.rtf':
-      '{\\rtf1\\ansi Avant {\\field{\\*\\fldinst{HYPERLINK "scrivcmt://COMMENT-1"}}{\\fldrslt [1]}} apres.}',
+      '{\\rtf1\\ansi Before {\\field{\\*\\fldinst{HYPERLINK "scrivcmt://COMMENT-1"}}{\\fldrslt [1]}} after.}',
     'Files/Data/DOC-1/content.comments':
-      '<Comments><Comment ID="COMMENT-1" Author="Anon" Number="3" Collapsed="Yes"><![CDATA[{\\rtf1\\ansi Commentaire anonymise.}]]></Comment></Comments>',
+      '<Comments><Comment ID="COMMENT-1" Author="Anon" Number="3" Collapsed="Yes"><![CDATA[{\\rtf1\\ansi Anonymized comment.}]]></Comment></Comments>',
   });
 
   const documents = parseDocuments(archive, {
@@ -70,13 +70,13 @@ test('links comment anchors to parsed comments without circular references', () 
   assert.equal(document.comments?.[0]?.number, 3);
   assert.equal(document.comments?.[0]?.collapsed, true);
   assert.equal(document.comments?.[0]?.hasAnchors, true);
-  assert.match(document.comments?.[0]?.text ?? '', /Commentaire anonymise/);
+  assert.match(document.comments?.[0]?.text ?? '', /Anonymized comment/);
   assert.equal(document.rtfModel?.commentAnchors?.[0]?.commentIndex, 0);
 });
 
 test('parses structured RTF content inside content.comments', () => {
   const archive = ScrivenerArchive.fromFileMap({
-    'Files/Data/DOC-C/content.comments': String.raw`<Comments><Comment ID="COMMENT-C" Author="Anon" Color="0.85 0.85 0.85"><![CDATA[{\rtf1\ansi Voir {\field{\*\fldinst{HYPERLINK "https://example.invalid/ref"}}{\fldrslt source}} <$projecttitle>.}]]></Comment></Comments>`,
+    'Files/Data/DOC-C/content.comments': String.raw`<Comments><Comment ID="COMMENT-C" Author="Anon" Color="0.85 0.85 0.85"><![CDATA[{\rtf1\ansi See {\field{\*\fldinst{HYPERLINK "https://example.invalid/ref"}}{\fldrslt source}} <$projecttitle>.}]]></Comment></Comments>`,
   });
 
   const documents = parseDocuments(archive, {
@@ -99,7 +99,7 @@ test('parses structured RTF content inside content.comments', () => {
   const comment = documents['DOC-C']?.comments?.[0];
 
   assert.equal(comment?.id, 'COMMENT-C');
-  assert.match(comment?.text ?? '', /Voir source/);
+  assert.match(comment?.text ?? '', /See source/);
   assert.ok((comment?.textWordCount ?? 0) > 0);
   assert.ok((comment?.textCharCount ?? 0) > 0);
   assert.equal(comment?.hyperlinks?.[0]?.url, 'https://example.invalid/ref');
@@ -113,7 +113,7 @@ test('parses structured RTF content inside content.comments', () => {
 
 test('loads notes.styles and derives note style spans', () => {
   const archive = ScrivenerArchive.fromFileMap({
-    'Files/Data/DOC-2/notes.rtf': String.raw`{\rtf1\ansi <$Scr_Cs::0>Note styled<!$Scr_Cs::0> fin}`,
+    'Files/Data/DOC-2/notes.rtf': String.raw`{\rtf1\ansi <$Scr_Cs::0>Note styled<!$Scr_Cs::0> end}`,
     'Files/Data/DOC-2/notes.styles': 'STYLE-NOTE',
   });
 
@@ -141,7 +141,7 @@ test('loads notes.styles and derives note style spans', () => {
 
   assert.equal(document.notesStyleIds?.[0], 'STYLE-NOTE');
   assert.equal(document.notesStyleRefs?.[0]?.name, 'Note emphasis');
-  assert.equal(document.notesPlain, '<$Scr_Cs::0>Note styled<!$Scr_Cs::0> fin');
+  assert.equal(document.notesPlain, '<$Scr_Cs::0>Note styled<!$Scr_Cs::0> end');
   assert.deepEqual(
     document.notesStyleSpans
       ?.filter((span) => span.kind === 'character')
@@ -161,7 +161,7 @@ test('loads notes.styles and derives note style spans', () => {
 
 test('annotates parsed paragraphs with their effective style ids', () => {
   const archive = ScrivenerArchive.fromFileMap({
-    'Files/Data/DOC-3/content.rtf': String.raw`{\rtf1\ansi <$Scr_Ps::0>Mai 2018\par <!$Scr_Ps::0>Corps}`,
+    'Files/Data/DOC-3/content.rtf': String.raw`{\rtf1\ansi <$Scr_Ps::0>May 2018\par <!$Scr_Ps::0>Body}`,
     'Files/Data/DOC-3/content.styles': 'STYLE-DATE',
   });
 
@@ -195,7 +195,7 @@ test('annotates parsed paragraphs with their effective style ids', () => {
 test('resolves inline annotation style ids from parser directives and preserves linked image placements', () => {
   const token = '{$SCRImageLink[w:120,h:90]=$PROJECT://ABCDEF12-3456-7890-ABCD-EF1234567890.JPG}';
   const archive = ScrivenerArchive.fromFileMap({
-    'Files/Data/DOC-4/content.rtf': String.raw`{\rtf1\ansi Avant ${token} apres\par {\Scrv_annot \text=<$Scr_Ps::0>Mai 2018<!$Scr_Ps::0>\end_Scrv_annot}}`,
+    'Files/Data/DOC-4/content.rtf': String.raw`{\rtf1\ansi Before ${token} after\par {\Scrv_annot \text=<$Scr_Ps::0>May 2018<!$Scr_Ps::0>\end_Scrv_annot}}`,
     'Files/Data/DOC-4/content.styles': 'STYLE-DATE',
   });
 

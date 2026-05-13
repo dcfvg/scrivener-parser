@@ -15,12 +15,12 @@ test('parses project defaults, section type levels, and binder separators', () =
     StatusSettings: {
       DefaultStatusID: '9',
       StatusItems: {
-        Status: [{ ID: '9', '#text': 'Situation' }],
+        Status: [{ ID: '9', '#text': 'Status' }],
       },
     },
     SectionTypes: {
       TypeDefinitions: {
-        Type: [{ ID: 'TYPE-1', '#text': 'Partie' }],
+        Type: [{ ID: 'TYPE-1', '#text': 'Part' }],
       },
       LevelTypes: {
         Folders: { Type: ['TYPE-1'] },
@@ -55,18 +55,18 @@ test('parses project defaults, section type levels, and binder separators', () =
     BinderItem: {
       UUID: 'NODE-1',
       Type: 'TrashFolder',
-      Title: 'Corbeille',
+      Title: 'Trash',
       BinderSeparator: 'Yes',
       Bookmarks: {
         Bookmark: [
-          { BinderUUID: 'NODE-2', Destination: '[Internal Link]', '#text': 'Texte lié' },
+          { BinderUUID: 'NODE-2', Destination: '[Internal Link]', '#text': 'Linked text' },
         ],
       },
       Children: {
         BinderItem: {
           UUID: 'NODE-2',
           Type: 'Text',
-          Title: 'Texte',
+          Title: 'Text',
         },
       },
     },
@@ -76,7 +76,7 @@ test('parses project defaults, section type levels, and binder separators', () =
   assert.equal(binder[0]?.isBinderSeparator, true);
   assert.equal(binder[0]?.bookmarks?.[0]?.binderUuid, 'NODE-2');
   assert.equal(binder[0]?.bookmarks?.[0]?.destination, '[Internal Link]');
-  assert.equal(binder[0]?.bookmarks?.[0]?.title, 'Texte lié');
+  assert.equal(binder[0]?.bookmarks?.[0]?.title, 'Linked text');
   assert.equal(binder[0]?.children[0]?.uuid, 'NODE-2');
 });
 
@@ -91,12 +91,12 @@ test('allows children to override a parent excluded from compile', () => {
           {
             UUID: 'TOP-DEFAULT-OUT',
             Type: 'Folder',
-            Title: 'Annexes',
+            Title: 'Appendices',
           },
           {
             UUID: 'PARENT-OUT',
             Type: 'Folder',
-            Title: 'Parent hors compile',
+            Title: 'Parent excluded from compile',
             MetaData: {
               IncludeInCompile: 'No',
             },
@@ -105,7 +105,7 @@ test('allows children to override a parent excluded from compile', () => {
                 {
                   UUID: 'CHILD-IN',
                   Type: 'Text',
-                  Title: 'Enfant recompilé',
+                  Title: 'Reincluded child',
                   MetaData: {
                     IncludeInCompile: 'Yes',
                   },
@@ -113,12 +113,12 @@ test('allows children to override a parent excluded from compile', () => {
                 {
                   UUID: 'CHILD-INHERIT',
                   Type: 'Text',
-                  Title: 'Enfant hérité hors compile',
+                  Title: 'Inherited excluded child',
                 },
                 {
                   UUID: 'FOLDER-IN',
                   Type: 'Folder',
-                  Title: 'Dossier recompilé',
+                  Title: 'Reincluded folder',
                   MetaData: {
                     IncludeInCompile: 'Yes',
                   },
@@ -126,7 +126,7 @@ test('allows children to override a parent excluded from compile', () => {
                     BinderItem: {
                       UUID: 'GRANDCHILD-INHERIT',
                       Type: 'Text',
-                      Title: 'Petit-enfant hérité recompilé',
+                      Title: 'Inherited reincluded grandchild',
                     },
                   },
                 },

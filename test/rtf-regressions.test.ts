@@ -45,7 +45,7 @@ test('extracts Scrivener comment anchors from hyperlink fields', () => {
     ],
   );
   assert.ok(extras.fields.every((field) => field.kind === 'comment-anchor'));
-  assert.equal(extras.plainText, 'Bloc neutre [A] suite neutre [B] fin.');
+  assert.equal(extras.plainText, 'Neutral block [A] neutral continuation [B] end.');
 });
 
 test('extracts inline footnotes and annotations from embedded Scrivener markup', () => {
@@ -54,11 +54,11 @@ test('extracts inline footnotes and annotations from embedded Scrivener markup',
   const extras = extractRtfExtras(rtf);
 
   assert.equal(extras.inlineAnnotations.length, 1);
-  assert.match(extras.inlineAnnotations[0].text ?? '', /Annotation anonyme de test/);
+  assert.match(extras.inlineAnnotations[0].text ?? '', /Anonymous test annotation/);
   assert.equal(extras.inlineAnnotations[0].color, '0.100000 0.200000 0.300000');
   assert.equal(extras.inlineAnnotations[0].styleRef, '0');
   assert.equal(extras.footnotes.length, 1);
-  assert.match(extras.footnotes[0].text ?? '', /Reference anonyme 2024/);
+  assert.match(extras.footnotes[0].text ?? '', /Anonymous reference 2024/);
   assert.match(extras.footnotes[0].text ?? '', /https:\/\/example\.invalid\/reference/);
   assert.ok(extras.plainText.includes(extras.footnotes[0].token));
   assert.ok(!extras.plainText.includes('Scrv_fn'));
@@ -68,7 +68,7 @@ test('extracts inline footnotes and annotations from embedded Scrivener markup',
 });
 
 test('extractPlaceholders keeps only real compile placeholders', () => {
-  const plainText = String.raw`<$ScrKeepWithNext><$ScrKeepWithNextSplittable><$Scr_H::2><$Scr_Ps::0>Titre <$n:figure> \<$date> <$ScrvFn:note> <!$Scr_Ps::0>`;
+  const plainText = String.raw`<$ScrKeepWithNext><$ScrKeepWithNextSplittable><$Scr_H::2><$Scr_Ps::0>Title <$n:figure> \<$date> <$ScrvFn:note> <!$Scr_Ps::0>`;
 
   const placeholders = extractPlaceholders('', 'text', plainText);
 
@@ -79,10 +79,10 @@ test('extractPlaceholders keeps only real compile placeholders', () => {
 });
 
 test('preserves style directives hidden inside inline annotations and footnotes', () => {
-  const rtf = String.raw`{\rtf1\ansi <$Scr_Ps::0>Date test\
-{\Scrv_annot \text=<!$Scr_Ps::0>Annotation masquee \end_Scrv_annot}\
-Texte courant\
-{\Scrv_fn=<$ScrKeepWithNext>Note invisible\end_Scrv_fn}Suite}`;
+  const rtf = String.raw`{\rtf1\ansi <$Scr_Ps::0>Test date\
+{\Scrv_annot \text=<!$Scr_Ps::0>Hidden annotation \end_Scrv_annot}\
+Current text\
+{\Scrv_fn=<$ScrKeepWithNext>Hidden note\end_Scrv_fn}After}`;
 
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(
@@ -104,15 +104,15 @@ Texte courant\
     [
       {
         id: 'STYLE-DATE',
-        text: 'Date test',
+        text: 'Test date',
       },
       {
         id: 'STYLE-DATE',
-        text: 'Texte courant',
+        text: 'Current text',
       },
       {
         id: 'STYLE-DATE',
-        text: '<$ScrvFn:Note%20invisible>Suite',
+        text: '<$ScrvFn:Hidden%20note>After',
       },
     ],
   );
@@ -147,7 +147,7 @@ test('extracts RTF document properties from font, color and style tables', () =>
 {\fonttbl{\f0\froman\fcharset0 Times New Roman;}{\f1\fswiss Helvetica;}}
 {\colortbl;\red255\green0\blue0;\red0\green128\blue64;}
 {\stylesheet{\s0\sbasedon0\snext1 Normal;}{\cs2 Character Accent;}{\ds3 Section Style;}}
-\s0 Texte}`;
+\s0 Text}`;
 
   const extras = extractRtfExtras(rtf);
 
@@ -172,7 +172,7 @@ test('extracts RTF document properties from font, color and style tables', () =>
 });
 
 test('extracts inline RTF font table entries', () => {
-  const rtf = String.raw`{\rtf1\ansi{\fonttbl\f0\fnil\fcharset0 Cochin;}\f0 Texte}`;
+  const rtf = String.raw`{\rtf1\ansi{\fonttbl\f0\fnil\fcharset0 Cochin;}\f0 Text}`;
 
   const extras = extractRtfExtras(rtf);
 
@@ -227,30 +227,30 @@ test('does not treat Shift-JIS trail byte 0x5c as an RTF control prefix', () => 
 });
 
 test('honors uc fallback length after unicode control words', () => {
-  const bytes = asciiBytes(String.raw`{\rtf1\ansi\uc2\u233?? suite}`);
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\uc2\u233?? after}`);
 
   const parsed = parseRtfContent('', {
     decodeRtf: true,
     rtfBytes: bytes,
   });
 
-  assert.equal(parsed.plainText, 'é suite');
+  assert.equal(parsed.plainText, 'é after');
 });
 
 test('removes multibyte unicode fallbacks without shifting following text', () => {
-  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932\uc2\u12477\'83\'5c suite}`);
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg932\uc2\u12477\'83\'5c after}`);
 
   const parsed = parseRtfContent('', {
     decodeRtf: true,
     rtfBytes: bytes,
   });
 
-  assert.equal(decodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg932\uc0\u12477{} suite}`);
-  assert.equal(parsed.plainText, 'ソ suite');
+  assert.equal(decodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg932\uc0\u12477{} after}`);
+  assert.equal(parsed.plainText, 'ソ after');
 });
 
 test('combines unicode surrogate pairs for emoji escapes', () => {
-  const rtf = String.raw`{\rtf1\ansi Emoji \u-10179?\u-8704? fin}`;
+  const rtf = String.raw`{\rtf1\ansi Emoji \u-10179?\u-8704? end}`;
   const bytes = asciiBytes(rtf);
 
   const parsed = parseRtfContent('', {
@@ -258,8 +258,8 @@ test('combines unicode surrogate pairs for emoji escapes', () => {
     rtfBytes: bytes,
   });
 
-  assert.equal(rtfToText(rtf), 'Emoji 😀 fin');
-  assert.equal(parsed.plainText, 'Emoji 😀 fin');
+  assert.equal(rtfToText(rtf), 'Emoji 😀 end');
+  assert.equal(parsed.plainText, 'Emoji 😀 end');
 });
 
 test('keeps RTF groups stable across bin payload bytes', () => {
@@ -296,8 +296,8 @@ test('normalizes pict bin payloads to hex for embedded image extraction', () => 
 });
 
 test('annotates paragraph metadata from leading Scrivener directives', () => {
-  const rtf = String.raw`{\rtf1\ansi <$ScrKeepWithNext><$Scr_H::2><$Scr_Ps::0>Titre\
-<!$Scr_H::2><!$Scr_Ps::0>Corps}`;
+  const rtf = String.raw`{\rtf1\ansi <$ScrKeepWithNext><$Scr_H::2><$Scr_Ps::0>Title\
+<!$Scr_H::2><!$Scr_Ps::0>Body}`;
 
   const extras = extractRtfExtras(rtf);
 
@@ -309,21 +309,21 @@ test('annotates paragraph metadata from leading Scrivener directives', () => {
 });
 
 test('annotates the paragraph after an RTF page break', () => {
-  const rtf = String.raw`{\rtf1\ansi Avant\
+  const rtf = String.raw`{\rtf1\ansi Before\
 \page \pard {$SCRImageLink[w:3840;h:2160]=/tmp/figure.jpg}\
-Apres}`;
+After}`;
 
   const extras = extractRtfExtras(rtf);
 
   assert.equal(extras.paragraphs.length, 3);
-  assert.equal(extras.paragraphs[0]?.text, 'Avant');
+  assert.equal(extras.paragraphs[0]?.text, 'Before');
   assert.equal(extras.paragraphs[1]?.text, '$SCRImageLink[w:3840;h:2160]=/tmp/figure.jpg');
   assert.equal(extras.paragraphs[1]?.pageBreakBefore, true);
   assert.equal(extras.paragraphs[2]?.pageBreakBefore, undefined);
 });
 
 test('extracts embedded Scrivener pdf assets without leaking filename text', () => {
-  const rtf = String.raw`{\rtf1\ansi Avant {\*\scrivenerpdf {\*\pdffilename sample.pdf}} apres}`;
+  const rtf = String.raw`{\rtf1\ansi Before {\*\scrivenerpdf {\*\pdffilename sample.pdf}} after}`;
 
   const extras = extractRtfExtras(rtf);
   const pdfAsset = extras.assets.find((asset) => asset.type === 'embedded-pdf');
@@ -333,8 +333,8 @@ test('extracts embedded Scrivener pdf assets without leaking filename text', () 
   assert.equal(extras.embeddedPdfs[0]?.paragraphIndex, 0);
   assert.equal(pdfAsset?.fileName, 'sample.pdf');
   assert.equal(pdfAsset?.type, 'embedded-pdf');
-  assert.match(extras.plainText, /Avant/);
-  assert.match(extras.plainText, /apres/);
+  assert.match(extras.plainText, /Before/);
+  assert.match(extras.plainText, /after/);
   assert.equal(extras.plainText.includes('sample.pdf'), false);
 });
 
@@ -399,27 +399,46 @@ test('distinguishes $PROJECT linked images and tolerates malformed duplicated pa
 });
 
 test('keeps character style spans scoped to their RTF group', () => {
-  const rtf = '{\\rtf1\\ansi{\\stylesheet{\\cs1 Italic;}}Debut {\\cs1 italique} fin normal}';
+  const rtf = '{\\rtf1\\ansi{\\stylesheet{\\cs1 Italic;}}Start {\\cs1 italic} end normal}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(rtf, plainText, []);
   const italicSpan = spans.find((span) => span.kind === 'character');
 
-  assert.equal(plainText, 'Debut italique fin normal');
+  assert.equal(plainText, 'Start italic end normal');
   assert.deepEqual(italicSpan, {
-    id: '1',
-    name: '1',
+    id: 'Italic',
+    name: 'Italic',
     kind: 'character',
     start: 6,
-    end: 14,
+    end: 12,
+  });
+});
+
+test('maps RTF stylesheet character styles to Scrivener style definitions by name', () => {
+  const rtf = '{\\rtf1\\ansi{\\stylesheet{\\cs1 Accent;}}Before {\\cs1 accent} after}';
+  const plainText = rtfToText(rtf);
+  const spans = extractStyleSpans(
+    rtf,
+    plainText,
+    [{ id: 'STYLE-ACCENT', name: 'Accent' }],
+  );
+  const accentSpan = spans.find((span) => span.kind === 'character');
+
+  assert.deepEqual(accentSpan, {
+    id: 'STYLE-ACCENT',
+    name: 'Accent',
+    kind: 'character',
+    start: 7,
+    end: 13,
   });
 });
 
 test('ignores formatting line breaks and captures direct italic runs', () => {
-  const rtf = '{\\rtf1\\ansi Texte avant \\n\\i Guests\\n\\i0  apres}';
+  const rtf = '{\\rtf1\\ansi Text before \\n\\i Guests\\n\\i0  after}';
   const plainText = rtfToText(rtf);
   const italicSpan = extractStyleSpans(rtf, plainText, []).find((span) => span.kind === 'character');
 
-  assert.equal(plainText, 'Texte avant Guests apres');
+  assert.equal(plainText, 'Text before Guests after');
   assert.deepEqual(italicSpan, {
     id: 'rtf-italic',
     name: 'rtf-italic',
@@ -430,35 +449,35 @@ test('ignores formatting line breaks and captures direct italic runs', () => {
 });
 
 test('captures direct underline runs and combines them with bold and italic', () => {
-  const rtf = '{\\rtf1\\ansi Un \\ul souligne\\ulnone  puis \\b\\i\\ul tout\\ulnone\\i0\\b0 .}';
+  const rtf = '{\\rtf1\\ansi A \\ul mark\\ulnone  then \\b\\i\\ul all\\ulnone\\i0\\b0 .}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(rtf, plainText, []).filter((span) => span.kind === 'character');
 
-  assert.equal(plainText, 'Un souligne puis tout.');
+  assert.equal(plainText, 'A mark then all.');
   assert.deepEqual(spans, [
     {
       id: 'rtf-underline',
       name: 'rtf-underline',
       kind: 'character',
-      start: 3,
-      end: 11,
+      start: 2,
+      end: 6,
     },
     {
       id: 'rtf-bold-italic-underline',
       name: 'rtf-bold-italic-underline',
       kind: 'character',
-      start: 17,
-      end: 21,
+      start: 12,
+      end: 15,
     },
   ]);
 });
 
 test('normalizes RTF underline variants and ignores underline color controls', () => {
-  const rtf = '{\\rtf1\\ansi A {\\uldb double} B\\ulc1{} couleur C {\\ulwave vague} D {\\ulstyle1 style} E {\\ulfoo inconnu} fin}';
+  const rtf = '{\\rtf1\\ansi A {\\uldb double} B\\ulc1{} color C {\\ulwave wave} D {\\ulstyle1 style} E {\\ulfoo unknown} end}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(rtf, plainText, []).filter((span) => span.kind === 'character');
 
-  assert.equal(plainText, 'A double B couleur C vague D style E inconnu fin');
+  assert.equal(plainText, 'A double B color C wave D style E unknown end');
   assert.deepEqual(
     spans.map((span) => ({
       id: span.id,
@@ -466,14 +485,14 @@ test('normalizes RTF underline variants and ignores underline color controls', (
     })),
     [
       { id: 'rtf-underline', text: 'double' },
-      { id: 'rtf-underline', text: 'vague' },
+      { id: 'rtf-underline', text: 'wave' },
       { id: 'rtf-underline', text: 'style' },
     ],
   );
 });
 
 test('keeps direct italic offsets aligned after embedded Scrivener annotations', () => {
-  const rtf = String.raw`{\rtf1\ansi {\Scrv_annot \text=<$ScrKeepWithNext><$Scr_Ps::0>Annotation interne \end_Scrv_annot}\i Floating University \i0 suite}`;
+  const rtf = String.raw`{\rtf1\ansi {\Scrv_annot \text=<$ScrKeepWithNext><$Scr_Ps::0>Internal annotation \end_Scrv_annot}\i Floating University \i0 after}`;
   const plainText = rtfToText(rtf);
   const italicSpan = extractStyleSpans(rtf, plainText, []).find(
     (span) => span.kind === 'character' && span.id === 'rtf-italic',
@@ -491,14 +510,14 @@ test('keeps direct italic offsets aligned after embedded Scrivener annotations',
 });
 
 test('treats bare backslash line endings as paragraph breaks', () => {
-  const rtf = `{\\rtf1\\ansi{\\stylesheet{\\s0 Normal;}{\\s1 fig;}{\\s2 fig caption;}}\\s1 Figure bloc \\
-\\s2 Legende bloc}`;
+  const rtf = `{\\rtf1\\ansi{\\stylesheet{\\s0 Normal;}{\\s1 fig;}{\\s2 fig caption;}}\\s1 Figure block \\
+\\s2 Caption block}`;
   const plainText = rtfToText(rtf);
   const paragraphSpans = extractStyleSpans(rtf, plainText, []).filter(
     (span) => span.kind === 'paragraph',
   );
 
-  assert.equal(plainText, 'Figure bloc\nLegende bloc');
+  assert.equal(plainText, 'Figure block\nCaption block');
   assert.deepEqual(
     paragraphSpans.map((span) => ({
       kind: span.kind,
@@ -509,19 +528,19 @@ test('treats bare backslash line endings as paragraph breaks', () => {
       {
         kind: 'paragraph',
         start: 0,
-        end: 11,
+        end: 12,
       },
       {
         kind: 'paragraph',
-        start: 12,
-        end: 24,
+        start: 13,
+        end: 26,
       },
     ],
   );
 });
 
 test('maps Scrivener paragraph-style markers to paragraph style spans without leaking after closing markers', () => {
-  const rtf = '{\\rtf1\\ansi <$Scr_Ps::1>Figure A\\\nFigure B\\\n<!$Scr_Ps::1>Texte courant\\\n<$Scr_Ps::0>Retour normal}';
+  const rtf = '{\\rtf1\\ansi <$Scr_Ps::1>Figure A\\\nFigure B\\\n<!$Scr_Ps::1>Current text\\\n<$Scr_Ps::0>Back to normal}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(
     rtf,
@@ -535,7 +554,7 @@ test('maps Scrivener paragraph-style markers to paragraph style spans without le
 
   assert.equal(
     plainText,
-    '<$Scr_Ps::1>Figure A\nFigure B\n<!$Scr_Ps::1>Texte courant\n<$Scr_Ps::0>Retour normal',
+    '<$Scr_Ps::1>Figure A\nFigure B\n<!$Scr_Ps::1>Current text\n<$Scr_Ps::0>Back to normal',
   );
   assert.deepEqual(
     spans.map((span) => ({
@@ -557,19 +576,19 @@ test('maps Scrivener paragraph-style markers to paragraph style spans without le
       {
         id: 'STYLE-BASE',
         name: 'normal',
-        text: 'Texte courant',
+        text: 'Current text',
       },
       {
         id: 'STYLE-BASE',
         name: 'normal',
-        text: 'Retour normal',
+        text: 'Back to normal',
       },
     ],
   );
 });
 
 test('maps bare rtf s0 paragraphs to the detected default style definition', () => {
-  const rtf = '{\\rtf1\\ansi{\\stylesheet{\\s0 Normal;}{\\s1 Citation;}}\\s0 Texte courant\\par\\s1 Bloc cite}';
+  const rtf = '{\\rtf1\\ansi{\\stylesheet{\\s0 Normal;}{\\s1 Citation;}}\\s0 Current text\\par\\s1 Quoted block}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(
     rtf,
@@ -582,18 +601,18 @@ test('maps bare rtf s0 paragraphs to the detected default style definition', () 
 
   assert.equal(spans[0]?.id, 'STYLE-BASE');
   assert.equal(spans[0]?.name, 'P (from default)');
-  assert.equal(plainText.slice(spans[0]?.start, spans[0]?.end), 'Texte courant');
-  assert.equal(plainText.slice(spans[1]?.start, spans[1]?.end), 'Bloc cite');
+  assert.equal(plainText.slice(spans[0]?.start, spans[0]?.end), 'Current text');
+  assert.equal(plainText.slice(spans[1]?.start, spans[1]?.end), 'Quoted block');
 });
 
 test('skips non-style Scrivener directives before paragraph style markers', () => {
-  const rtf = '{\\rtf1\\ansi <$ScrKeepWithNext><$Scr_H::2><$Scr_Cs::0><$Scr_Ps::0>Titre lisible}';
+  const rtf = '{\\rtf1\\ansi <$ScrKeepWithNext><$Scr_H::2><$Scr_Cs::0><$Scr_Ps::0>Readable title}';
   const plainText = rtfToText(rtf);
   const spans = extractStyleSpans(
     rtf,
     plainText,
     [
-      { id: 'STYLE-TITLE', name: 'Titre' },
+      { id: 'STYLE-TITLE', name: 'Title' },
     ],
     ['STYLE-TITLE'],
   ).filter((span) => span.kind === 'paragraph');
@@ -606,7 +625,7 @@ test('skips non-style Scrivener directives before paragraph style markers', () =
     [
       {
         id: 'STYLE-TITLE',
-        text: 'Titre lisible',
+        text: 'Readable title',
       },
     ],
   );
@@ -640,7 +659,7 @@ test('maps Scrivener character-style directives to character spans', () => {
 });
 
 test('types Scrivener document links separately from web hyperlinks', () => {
-  const rtf = String.raw`{\rtf1\ansi Avant {\field{\*\fldinst{HYPERLINK "scrivlnk://AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}}{\fldrslt Cible interne}} apres.}`;
+  const rtf = String.raw`{\rtf1\ansi Before {\field{\*\fldinst{HYPERLINK "scrivlnk://AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"}}{\fldrslt Internal target}} after.}`;
   const extras = extractRtfExtras(rtf);
 
   assert.equal(extras.fields.length, 1);
