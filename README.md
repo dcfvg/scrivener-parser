@@ -84,6 +84,19 @@ Returns a `ParsedScrivenerProject` with the following fields:
 
 RTF files are decoded from bytes so `\ansicpgN` code pages and consecutive `\'xx` escapes are handled before text extraction. For direct RTF use, `rtfToText()` accepts either a string or `Uint8Array`; `decodeRtfBytes()` returns a normalized RTF string.
 
+```ts
+import {
+  decodeRtfBytes,
+  parseRtfPropertiesFromBytes,
+  rtfToText,
+  tokenizeRtfBytes,
+} from 'scrivener-parser';
+
+const tokenized = tokenizeRtfBytes(rtfBytes);
+const properties = parseRtfPropertiesFromBytes(rtfBytes);
+const text = rtfToText(rtfBytes);
+```
+
 ## Exports
 
 | Entry point | Contents |

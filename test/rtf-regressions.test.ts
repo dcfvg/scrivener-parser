@@ -9,6 +9,12 @@ import { extractStyleSpans } from '../src/rtf/extractStyleSpans.js';
 import { rtfToText } from '../src/rtf/rtfToText.js';
 import { decodeRtfBytes, tokenizeRtfBytes } from '../src/rtf/byteTokenizer.js';
 import { parseRtfContent } from '../src/parsers/rtf-content.js';
+import {
+  decodeRtfBytes as publicDecodeRtfBytes,
+  parseRtfPropertiesFromBytes as publicParseRtfPropertiesFromBytes,
+  rtfToText as publicRtfToText,
+  tokenizeRtfBytes as publicTokenizeRtfBytes,
+} from '../src/index.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -46,6 +52,18 @@ test('extracts Scrivener comment anchors from hyperlink fields', () => {
   );
   assert.ok(extras.fields.every((field) => field.kind === 'comment-anchor'));
   assert.equal(extras.plainText, 'Neutral block [A] neutral continuation [B] end.');
+});
+
+test('public API exposes byte-aware RTF helpers', () => {
+  const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg1252 Caf\'e9}`);
+
+  const tokenized = publicTokenizeRtfBytes(bytes);
+  const properties = publicParseRtfPropertiesFromBytes(bytes);
+
+  assert.equal(publicDecodeRtfBytes(bytes), String.raw`{\rtf1\ansi\ansicpg1252 Café}`);
+  assert.equal(publicRtfToText(bytes), 'Café');
+  assert.equal(tokenized.properties.codePage, 1252);
+  assert.equal(properties.codePage, 1252);
 });
 
 test('extracts inline footnotes and annotations from embedded Scrivener markup', () => {

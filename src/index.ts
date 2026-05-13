@@ -63,7 +63,18 @@ export { parseDocuments as parseScrivenerDocuments } from './parsers/documents.j
 export { parseResources as parseScrivenerResources } from './parsers/resources.js';
 export { parseRtfContent } from './parsers/rtf-content.js';
 export type { ParsedRtfContent, ParsedRtfContentOptions } from './parsers/rtf-content.js';
-export { decodeRtfBytes, decodeRtfTextBytes, rtfEncodingLabelForCodePage } from './rtf/byteTokenizer.js';
+export {
+  decodeRtfBytes,
+  decodeRtfTextBytes,
+  rtfEncodingLabelForCodePage,
+  tokenizeRtfBytes,
+} from './rtf/byteTokenizer.js';
+export type { ByteTokenizedRtf } from './rtf/byteTokenizer.js';
+export {
+  parseRtfPropertiesFromBytes,
+  parseRtfPropertiesFromTokens,
+} from './rtf/properties.js';
+export type { RtfProperties } from './rtf/properties.js';
 export { rtfToText } from './rtf/rtfToText.js';
 export {
   collectPlaceholders,
