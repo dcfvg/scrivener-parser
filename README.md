@@ -101,7 +101,7 @@ const text = rtfToText(rtfBytes);
 
 ### Style spans
 
-`styleSpans` use stable semantic ids. When an RTF stylesheet entry matches a Scrivener style definition by name, `span.id` is the Scrivener style id and `span.name` is the Scrivener style name. When no Scrivener definition is available, `span.id` and `span.name` fall back to the canonical RTF stylesheet name. Direct RTF formatting keeps renderer-neutral ids such as `rtf-bold`, `rtf-italic`, `rtf-underline`, or combined variants.
+`styleSpans` use stable semantic ids. When an RTF stylesheet entry matches a Scrivener style definition by name, `span.id` is the Scrivener style id and `span.name` is the Scrivener style name. When no Scrivener definition is available, `span.id` and `span.name` fall back to the canonical RTF stylesheet name. If an RTF style reference has no stylesheet entry, the parser emits deterministic names such as `rtf-s3` or `rtf-cs1` rather than raw numeric ids. Direct RTF formatting keeps renderer-neutral ids such as `rtf-bold`, `rtf-italic`, `rtf-underline`, or combined variants.
 
 ## Exports
 

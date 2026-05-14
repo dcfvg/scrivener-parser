@@ -476,6 +476,36 @@ test('maps RTF stylesheet character styles to Scrivener style definitions by nam
   });
 });
 
+test('uses canonical RTF style names when stylesheet entries are missing', () => {
+  const rtf = '{\\rtf1\\ansi\\s3 Before {\\cs1 styled} after}';
+  const plainText = rtfToText(rtf);
+  const spans = extractStyleSpans(rtf, plainText, []);
+
+  assert.equal(plainText, 'Before styled after');
+  assert.deepEqual(
+    spans.map((span) => ({
+      id: span.id,
+      name: span.name,
+      kind: span.kind,
+      text: plainText.slice(span.start, span.end),
+    })),
+    [
+      {
+        id: 'rtf-s3',
+        name: 'rtf-s3',
+        kind: 'paragraph',
+        text: 'Before styled after',
+      },
+      {
+        id: 'rtf-cs1',
+        name: 'rtf-cs1',
+        kind: 'character',
+        text: 'styled',
+      },
+    ],
+  );
+});
+
 test('ignores formatting line breaks and captures direct italic runs', () => {
   const rtf = '{\\rtf1\\ansi Text before \\n\\i Guests\\n\\i0  after}';
   const plainText = rtfToText(rtf);

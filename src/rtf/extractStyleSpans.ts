@@ -85,6 +85,18 @@ function buildStyleMap(tokens: RtfToken[]): Map<string, string> {
   return map;
 }
 
+function canonicalRtfStyleName(kind: 'paragraph' | 'character' | 'section', value: string | number | undefined): string {
+  const suffix = String(value ?? '').trim() || 'unknown';
+  if (kind === 'character') return `rtf-cs${suffix}`;
+  if (kind === 'section') return `rtf-ds${suffix}`;
+  return `rtf-s${suffix}`;
+}
+
+function canonicalScrivenerStyleReference(value: string | number | undefined): string {
+  const suffix = String(value ?? '').trim() || 'unknown';
+  return `scrivener-style-${suffix}`;
+}
+
 function detectDefaultStyleDefinition(
   definitions?: ScrivenerStyleDefinition[],
 ): ScrivenerStyleDefinition | undefined {
@@ -417,9 +429,10 @@ function resolveScrivenerStyleReference(
 
   const styleId = styleIds?.[index];
   if (!styleId) {
+    const canonical = canonicalScrivenerStyleReference(value);
     return {
-      id: value,
-      name: value,
+      id: canonical,
+      name: canonical,
     };
   }
 
@@ -714,9 +727,10 @@ function resolveCharacterSpan(
   if (current) {
     const rtfStyleName = styleMap?.get(`cs:${current}`);
     const definitionName = nameMap?.get(current);
-    const resolvedName = rtfStyleName ?? definitionName ?? current;
+    const canonicalName = canonicalRtfStyleName('character', current);
+    const resolvedName = rtfStyleName ?? definitionName ?? canonicalName;
     return {
-      id: (rtfStyleName ? idByName?.get(rtfStyleName) : undefined) ?? rtfStyleName ?? current,
+      id: (rtfStyleName ? idByName?.get(rtfStyleName) : undefined) ?? rtfStyleName ?? canonicalName,
       name: resolvedName,
     };
   }
@@ -1008,10 +1022,12 @@ export function extractStyleSpans(
     if (!paragraph || paragraph.visibleEnd <= paragraph.visibleStart) {
       continue;
     }
-    const resolvedId = name && resolvedDefs.has(name) ? resolvedDefs.get(name) : name ?? id;
-    const resolvedName = name ?? id;
+    const fallbackName = canonicalRtfStyleName('paragraph', id);
+    const resolvedId = name && resolvedDefs.has(name) ? resolvedDefs.get(name) : name ?? fallbackName;
+    const resolvedName = name ?? fallbackName;
     const paragraphStyle = (
-      (isLikelyDefaultParagraphStyleReference(String(resolvedId ?? ''))
+      (isLikelyDefaultParagraphStyleReference(String(id ?? ''))
+        || isLikelyDefaultParagraphStyleReference(String(resolvedId ?? ''))
         || isLikelyDefaultParagraphStyleReference(resolvedName))
       && defaultParagraphStyle
     )
