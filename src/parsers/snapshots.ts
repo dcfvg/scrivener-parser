@@ -3,9 +3,10 @@ import type { ScrivenerSnapshot } from '../types.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { rtfToText } from '../rtf/rtfToText.js';
-import { parseRtfContent } from './rtf-content.js';
+import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
+import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
-interface SnapshotOptions {
+interface SnapshotOptions extends ParserDiagnosticSink {
   basePath: string;
   decodeRtf: boolean;
   extractPlaceholders?: boolean;
@@ -58,8 +59,23 @@ function dedupeSnapshotMeta(entries: SnapshotMeta[]): SnapshotMeta[] {
   return [...deduped.values()];
 }
 
-function parseSnapshotMeta(content: string): SnapshotMeta[] {
-  const xml = parseXml<any>(content);
+function parseSnapshotMeta(
+  content: string,
+  path: string,
+  options: ParserDiagnosticSink,
+): SnapshotMeta[] {
+  const xml = tryOptionalParse<any | undefined>(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path,
+    },
+    undefined,
+    () => parseXml<any>(content),
+  );
+  if (!xml) {
+    return [];
+  }
   const nodes = toArray(
     xml?.SnapshotIndexes?.Snapshot ?? xml?.Snapshots?.Snapshot ?? xml?.Snapshot ?? [],
   );
@@ -98,19 +114,39 @@ function buildSnapshotFromEntry(
     };
   }
 
-  const parsed = parseRtfContent(entry.content, {
-    decodeRtf: options.decodeRtf,
-    extractPlaceholders: options.extractPlaceholders,
-    extractEmbeddedImages: options.extractEmbeddedImages,
-    extractInlineAnnotations: options.extractInlineAnnotations,
-    extractLinkedImages: options.extractLinkedImages,
-    extractHyperlinks: options.extractHyperlinks,
-    extractBookmarks: options.extractBookmarks,
-    extractFields: options.extractFields,
-    extractTables: options.extractTables,
-    computeTextCounts: options.computeTextCounts,
-    placeholderSource: 'text',
-  });
+  const parsed = tryOptionalParse<ParsedRtfContent | undefined>(
+    options,
+    {
+      code: 'rtf_parse_failed',
+      path: entry.file,
+    },
+    undefined,
+    () => parseRtfContent(entry.content, {
+      decodeRtf: options.decodeRtf,
+      extractPlaceholders: options.extractPlaceholders,
+      extractEmbeddedImages: options.extractEmbeddedImages,
+      extractInlineAnnotations: options.extractInlineAnnotations,
+      extractLinkedImages: options.extractLinkedImages,
+      extractHyperlinks: options.extractHyperlinks,
+      extractBookmarks: options.extractBookmarks,
+      extractFields: options.extractFields,
+      extractTables: options.extractTables,
+      computeTextCounts: options.computeTextCounts,
+      placeholderSource: 'text',
+    }),
+  );
+  if (!parsed) {
+    return {
+      title: meta.title,
+      date: meta.date ?? entry.date,
+      rtf: '',
+      plainText: meta.text,
+      sourceFile: entry.file,
+      hasText: false,
+      indexText: meta.text,
+      hasIndexText: Boolean(meta.text),
+    };
+  }
 
   return {
     title: meta.title,
@@ -169,10 +205,18 @@ export function parseSnapshots(
     const base = joinPath(prefix, `${uuid}.snapshots`);
     let metaEntries: SnapshotMeta[] = [];
     if (archive.has(`${base}/index.xml`)) {
-      metaEntries = metaEntries.concat(parseSnapshotMeta(archive.readText(`${base}/index.xml`)));
+      metaEntries = metaEntries.concat(parseSnapshotMeta(
+        archive.readText(`${base}/index.xml`),
+        `${base}/index.xml`,
+        options,
+      ));
     }
     if (archive.has(`${base}/snapshot.indexes`)) {
-      metaEntries = metaEntries.concat(parseSnapshotMeta(archive.readText(`${base}/snapshot.indexes`)));
+      metaEntries = metaEntries.concat(parseSnapshotMeta(
+        archive.readText(`${base}/snapshot.indexes`),
+        `${base}/snapshot.indexes`,
+        options,
+      ));
     }
     metaEntries = dedupeSnapshotMeta(metaEntries);
     const rtfEntries = paths

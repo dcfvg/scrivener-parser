@@ -2,6 +2,7 @@ import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import type { ScrivenerSearchIndex } from '../types.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
+import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
 function joinPath(base: string, child: string): string {
   return base ? `${base.replace(/\/$/, '')}/${child}` : child;
@@ -24,12 +25,27 @@ function readNodeText(node: unknown): string | undefined {
   return undefined;
 }
 
-export function parseSearchIndex(archive: ScrivenerArchive, basePath: string): ScrivenerSearchIndex {
+export function parseSearchIndex(
+  archive: ScrivenerArchive,
+  basePath: string,
+  options: ParserDiagnosticSink = {},
+): ScrivenerSearchIndex {
   const path = joinPath(basePath, 'Files/search.indexes');
   if (!archive.has(path)) {
     return { documents: [] };
   }
-  const xml = parseXml<any>(archive.readText(path));
+  const xml = tryOptionalParse<any | undefined>(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path,
+    },
+    undefined,
+    () => parseXml<any>(archive.readText(path)),
+  );
+  if (!xml) {
+    return { documents: [] };
+  }
   const root = xml?.SearchIndexes ?? xml;
   const docs = toArray(root?.Documents?.Document ?? xml?.Documents?.Document ?? []);
   return {

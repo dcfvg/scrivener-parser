@@ -17,7 +17,8 @@ import type {
 } from '../types.js';
 import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { extractRtfExtras } from '../rtf/extractExtras.js';
-import { decodeRtfBytes } from '../rtf/byteTokenizer.js';
+import { tokenizeRtfBytes } from '../rtf/byteTokenizer.js';
+import { parseRtfPropertiesFromTokens } from '../rtf/properties.js';
 
 export interface ParsedRtfContentOptions {
   decodeRtf?: boolean;
@@ -64,12 +65,60 @@ function countWords(text: string | undefined): number | undefined {
   return tokens.length;
 }
 
+function shouldParseRtfModel(options: ParsedRtfContentOptions): boolean {
+  return (
+    options.decodeRtf !== false
+    || Boolean(options.extractPlaceholders)
+    || Boolean(options.extractEmbeddedImages)
+    || Boolean(options.extractInlineAnnotations)
+    || Boolean(options.extractLinkedImages)
+    || Boolean(options.extractHyperlinks)
+    || Boolean(options.extractBookmarks)
+    || Boolean(options.extractFields)
+    || Boolean(options.extractTables)
+    || Boolean(options.computeTextCounts)
+  );
+}
+
+function emptyRtfModel(
+  properties = parseRtfPropertiesFromTokens([]),
+): ScrivenerRtfModel {
+  return {
+    paragraphs: [],
+    runs: [],
+    properties,
+    fields: [],
+    commentAnchors: [],
+    footnotes: [],
+    annotations: [],
+    linkedImages: [],
+    lists: [],
+    assets: [],
+    embeddedPdfs: [],
+  };
+}
+
 export function parseRtfContent(
   rtf: string | Uint8Array,
   options: ParsedRtfContentOptions = {},
 ): ParsedRtfContent {
-  const sourceRtf = typeof rtf === 'string' ? rtf : decodeRtfBytes(rtf);
-  const extras = extractRtfExtras(sourceRtf);
+  let sourceRtf: string;
+  let tokenized: ReturnType<typeof tokenizeRtfBytes> | undefined;
+  if (typeof rtf === 'string') {
+    sourceRtf = rtf;
+  } else {
+    tokenized = tokenizeRtfBytes(rtf);
+    sourceRtf = tokenized.rtf;
+  }
+  if (!shouldParseRtfModel(options)) {
+    return {
+      rtf: sourceRtf,
+      paragraphs: [],
+      runs: [],
+      rtfModel: emptyRtfModel(tokenized?.properties),
+    };
+  }
+  const extras = extractRtfExtras(sourceRtf, tokenized);
   const plainText = options.decodeRtf !== false ? extras.plainText : undefined;
 
   const parsed: ParsedRtfContent = {
@@ -93,7 +142,7 @@ export function parseRtfContent(
       embeddedPdfs: extras.embeddedPdfs,
     },
     placeholders: options.extractPlaceholders
-      ? extractPlaceholders(sourceRtf, options.placeholderSource ?? 'text', plainText)
+      ? extractPlaceholders(sourceRtf, options.placeholderSource ?? 'text', extras.plainText)
       : undefined,
     embeddedImages: options.extractEmbeddedImages && extras.embeddedImages.length
       ? extras.embeddedImages

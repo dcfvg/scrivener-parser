@@ -8,13 +8,14 @@ import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import { rtfToText } from '../rtf/rtfToText.js';
 import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { extractStyleSpans } from '../rtf/extractStyleSpans.js';
-import { parseRtfContent } from './rtf-content.js';
+import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
+import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
-export interface DocumentParsingOptions {
+export interface DocumentParsingOptions extends ParserDiagnosticSink {
   basePath: string;
   decodeRtf: boolean;
   includeBinaryAssets: boolean;
@@ -64,27 +65,51 @@ function parseComments(
     | 'extractFields'
     | 'extractTables'
     | 'computeTextCounts'
+    | 'tolerant'
+    | 'diagnostics'
   >,
+  context: { path: string; documentId: string },
 ): ScrivenerComment[] {
-  const xml = parseXml<any>(content);
+  const xml = tryOptionalParse<any | undefined>(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path: context.path,
+      documentId: context.documentId,
+    },
+    undefined,
+    () => parseXml<any>(content),
+  );
+  if (!xml) {
+    return [];
+  }
   const comments = toArray(xml?.Comments?.Comment ?? xml?.Comment);
   return comments.map((comment: any) => {
     const raw = comment['#text'] ?? comment._cdata ?? comment.CDATA ?? '';
     const rawRtf = typeof raw === 'string' ? raw : '';
     const parsed = rawRtf
-      ? parseRtfContent(rawRtf, {
-          decodeRtf: options.decodeRtf,
-          extractPlaceholders: options.extractPlaceholders,
-          extractEmbeddedImages: options.extractEmbeddedImages,
-          extractInlineAnnotations: options.extractInlineAnnotations,
-          extractLinkedImages: options.extractLinkedImages,
-          extractHyperlinks: options.extractHyperlinks,
-          extractBookmarks: options.extractBookmarks,
-          extractFields: options.extractFields,
-          extractTables: options.extractTables,
-          computeTextCounts: options.computeTextCounts,
-          placeholderSource: 'comment',
-        })
+      ? tryOptionalParse<ParsedRtfContent | undefined>(
+          options,
+          {
+            code: 'rtf_parse_failed',
+            path: context.path,
+            documentId: context.documentId,
+          },
+          undefined,
+          () => parseRtfContent(rawRtf, {
+            decodeRtf: options.decodeRtf,
+            extractPlaceholders: options.extractPlaceholders,
+            extractEmbeddedImages: options.extractEmbeddedImages,
+            extractInlineAnnotations: options.extractInlineAnnotations,
+            extractLinkedImages: options.extractLinkedImages,
+            extractHyperlinks: options.extractHyperlinks,
+            extractBookmarks: options.extractBookmarks,
+            extractFields: options.extractFields,
+            extractTables: options.extractTables,
+            computeTextCounts: options.computeTextCounts,
+            placeholderSource: 'comment',
+          }),
+        )
       : undefined;
 
     return {
@@ -336,110 +361,132 @@ export function parseDocuments(
     if (archive.has(contentPath)) {
       const rtfBytes = archive.readRtfBytes(contentPath);
       document.hasText = true;
-      const parsedContent = parseRtfContent(rtfBytes, {
-        decodeRtf: options.decodeRtf,
-        extractPlaceholders: options.extractPlaceholders,
-        extractEmbeddedImages: options.extractEmbeddedImages,
-        extractInlineAnnotations: options.extractInlineAnnotations,
-        extractLinkedImages: options.extractLinkedImages,
-        extractHyperlinks: options.extractHyperlinks,
-        extractBookmarks: options.extractBookmarks,
-        extractFields: options.extractFields,
-        extractTables: options.extractTables,
-        computeTextCounts: options.computeTextCounts,
-        placeholderSource: 'text',
-      });
-      const rtf = parsedContent.rtf;
-      document.textRtf = rtf;
-      document.rtfModel = parsedContent.rtfModel;
-      document.paragraphs = parsedContent.paragraphs;
-      document.runs = parsedContent.runs;
-      if (parsedContent.plainText !== undefined) {
-        document.textPlain = parsedContent.plainText;
-      }
-      if (parsedContent.textWordCount !== undefined) {
-        document.textWordCount = parsedContent.textWordCount;
-      }
-      if (parsedContent.textCharCount !== undefined) {
-        document.textCharCount = parsedContent.textCharCount;
-      }
-      if (parsedContent.placeholders?.length) {
-        placeholders.push(...parsedContent.placeholders);
-      }
-      if (options.extractStyleSpans && options.decodeRtf) {
-        document.styleSpans = extractStyleSpans(
-          rtf,
-          document.textPlain,
-          options.styleDefinitions,
-          document.styleIds,
-        );
-        annotateParagraphStyleIds(document);
-      }
-      if (parsedContent.embeddedImages) {
-        document.embeddedImages = parsedContent.embeddedImages;
-      }
-      if (parsedContent.embeddedPdfs) {
-        document.embeddedPdfs = parsedContent.embeddedPdfs;
-      }
-      if (parsedContent.inlineAnnotations) {
-        document.inlineAnnotations = parsedContent.inlineAnnotations;
-        annotateInlineAnnotationStyleIds(document);
-      }
-      if (parsedContent.linkedImages) {
-        document.linkedImages = parsedContent.linkedImages;
-      }
-      if (parsedContent.hyperlinks) {
-        document.hyperlinks = parsedContent.hyperlinks;
-      }
-      if (parsedContent.bookmarks) {
-        document.bookmarks = parsedContent.bookmarks;
-      }
-      if (parsedContent.fields) {
-        document.fields = parsedContent.fields;
-      }
-      if (parsedContent.commentAnchors) {
-        document.commentAnchors = parsedContent.commentAnchors;
-      }
-      if (parsedContent.footnotes) {
-        document.footnotes = parsedContent.footnotes;
-      }
-      if (parsedContent.lists) {
-        document.lists = parsedContent.lists;
-      }
-      if (parsedContent.assets) {
-        document.assets = parsedContent.assets;
-      }
-      if (parsedContent.tables) {
-        document.tables = parsedContent.tables;
+      const parsedContent = tryOptionalParse<ParsedRtfContent | undefined>(
+        options,
+        {
+          code: 'rtf_parse_failed',
+          path: contentPath,
+          documentId: uuid,
+        },
+        undefined,
+        () => parseRtfContent(rtfBytes, {
+          decodeRtf: options.decodeRtf,
+          extractPlaceholders: options.extractPlaceholders,
+          extractEmbeddedImages: options.extractEmbeddedImages,
+          extractInlineAnnotations: options.extractInlineAnnotations,
+          extractLinkedImages: options.extractLinkedImages,
+          extractHyperlinks: options.extractHyperlinks,
+          extractBookmarks: options.extractBookmarks,
+          extractFields: options.extractFields,
+          extractTables: options.extractTables,
+          computeTextCounts: options.computeTextCounts,
+          placeholderSource: 'text',
+        }),
+      );
+      if (parsedContent) {
+        const rtf = parsedContent.rtf;
+        document.textRtf = rtf;
+        document.rtfModel = parsedContent.rtfModel;
+        document.paragraphs = parsedContent.paragraphs;
+        document.runs = parsedContent.runs;
+        if (parsedContent.plainText !== undefined) {
+          document.textPlain = parsedContent.plainText;
+        }
+        if (parsedContent.textWordCount !== undefined) {
+          document.textWordCount = parsedContent.textWordCount;
+        }
+        if (parsedContent.textCharCount !== undefined) {
+          document.textCharCount = parsedContent.textCharCount;
+        }
+        if (parsedContent.placeholders?.length) {
+          placeholders.push(...parsedContent.placeholders);
+        }
+        if (options.extractStyleSpans && options.decodeRtf) {
+          document.styleSpans = extractStyleSpans(
+            rtf,
+            document.textPlain,
+            options.styleDefinitions,
+            document.styleIds,
+          );
+          annotateParagraphStyleIds(document);
+        }
+        if (parsedContent.embeddedImages) {
+          document.embeddedImages = parsedContent.embeddedImages;
+        }
+        if (parsedContent.embeddedPdfs) {
+          document.embeddedPdfs = parsedContent.embeddedPdfs;
+        }
+        if (parsedContent.inlineAnnotations) {
+          document.inlineAnnotations = parsedContent.inlineAnnotations;
+          annotateInlineAnnotationStyleIds(document);
+        }
+        if (parsedContent.linkedImages) {
+          document.linkedImages = parsedContent.linkedImages;
+        }
+        if (parsedContent.hyperlinks) {
+          document.hyperlinks = parsedContent.hyperlinks;
+        }
+        if (parsedContent.bookmarks) {
+          document.bookmarks = parsedContent.bookmarks;
+        }
+        if (parsedContent.fields) {
+          document.fields = parsedContent.fields;
+        }
+        if (parsedContent.commentAnchors) {
+          document.commentAnchors = parsedContent.commentAnchors;
+        }
+        if (parsedContent.footnotes) {
+          document.footnotes = parsedContent.footnotes;
+        }
+        if (parsedContent.lists) {
+          document.lists = parsedContent.lists;
+        }
+        if (parsedContent.assets) {
+          document.assets = parsedContent.assets;
+        }
+        if (parsedContent.tables) {
+          document.tables = parsedContent.tables;
+        }
       }
       knownFiles.add('content.rtf');
     }
 
     const notesPath = `${base}/notes.rtf`;
     if (archive.has(notesPath)) {
-      const parsedNotes = parseRtfContent(archive.readRtfBytes(notesPath), {
-        decodeRtf: options.decodeRtf,
-        extractPlaceholders: options.extractPlaceholders,
-        computeTextCounts: false,
-        placeholderSource: 'notes',
-      });
-      const rtf = parsedNotes.rtf;
-      document.notesRtf = rtf;
-      if (options.decodeRtf) {
-        document.notesPlain = parsedNotes.plainText ?? rtfToText(rtf);
-      }
-      if (options.extractStyleSpans && options.decodeRtf && document.notesPlain) {
-        document.notesStyleSpans = extractStyleSpans(
-          rtf,
-          document.notesPlain,
-          options.styleDefinitions,
-          document.notesStyleIds,
-        );
-      }
-      if (options.extractPlaceholders) {
-        placeholders.push(
-          ...(parsedNotes.placeholders || extractPlaceholders(rtf, 'notes', options.decodeRtf ? document.notesPlain : undefined)),
-        );
+      const parsedNotes = tryOptionalParse<ParsedRtfContent | undefined>(
+        options,
+        {
+          code: 'rtf_parse_failed',
+          path: notesPath,
+          documentId: uuid,
+        },
+        undefined,
+        () => parseRtfContent(archive.readRtfBytes(notesPath), {
+          decodeRtf: options.decodeRtf,
+          extractPlaceholders: options.extractPlaceholders,
+          computeTextCounts: false,
+          placeholderSource: 'notes',
+        }),
+      );
+      if (parsedNotes) {
+        const rtf = parsedNotes.rtf;
+        document.notesRtf = rtf;
+        if (options.decodeRtf) {
+          document.notesPlain = parsedNotes.plainText ?? rtfToText(rtf);
+        }
+        if (options.extractStyleSpans && options.decodeRtf && document.notesPlain) {
+          document.notesStyleSpans = extractStyleSpans(
+            rtf,
+            document.notesPlain,
+            options.styleDefinitions,
+            document.notesStyleIds,
+          );
+        }
+        if (options.extractPlaceholders) {
+          placeholders.push(
+            ...(parsedNotes.placeholders || extractPlaceholders(rtf, 'notes', options.decodeRtf ? document.notesPlain : undefined)),
+          );
+        }
       }
       knownFiles.add('notes.rtf');
     }
@@ -453,7 +500,10 @@ export function parseDocuments(
     const commentsPath = `${base}/content.comments`;
     if (archive.has(commentsPath)) {
       const raw = archive.readText(commentsPath);
-      document.comments = parseComments(raw, options);
+      document.comments = parseComments(raw, options, {
+        path: commentsPath,
+        documentId: uuid,
+      });
       knownFiles.add('content.comments');
     }
 

@@ -272,6 +272,11 @@ export function parseProject(
   const extractTables = Boolean(options.extractTables);
   const computeTextCounts = Boolean(options.computeTextCounts);
   const normalizeBinderSections = Boolean(options.normalizeBinderSections);
+  const diagnostics = options.diagnostics ?? [];
+  const diagnosticOptions = {
+    tolerant: Boolean(options.tolerant),
+    diagnostics,
+  };
 
   const metadata = parseMetaSettings(projectNode);
   const binder = projectNode.Binder
@@ -283,6 +288,7 @@ export function parseProject(
   const resources = parseResources(archive, {
     basePath: rootPath,
     includeBinaryAssets,
+    ...diagnosticOptions,
   });
   const documents = parseDocuments(archive, {
     basePath: rootPath,
@@ -300,6 +306,7 @@ export function parseProject(
     extractTables,
     computeTextCounts,
     styleDefinitions: resources.styles,
+    ...diagnosticOptions,
   });
   applyBinderDisplayTitles(binder, documents);
   const snapshots = loadSnapshots ? parseSnapshots(archive, {
@@ -314,8 +321,9 @@ export function parseProject(
     extractFields,
     extractTables,
     computeTextCounts,
+    ...diagnosticOptions,
   }) : {};
-  const settings = parseSettings(archive, rootPath);
+  const settings = parseSettings(archive, rootPath, diagnosticOptions);
   const autoComplete = parseAutoCompleteList(projectNode);
   if (autoComplete.length) {
     settings.autoComplete = autoComplete;
@@ -343,8 +351,8 @@ export function parseProject(
       color: kw.color ?? undefined,
     }));
   }
-  const stats = parseStats(archive, rootPath, projectNode);
-  const search = parseSearchIndex(archive, rootPath);
+  const stats = parseStats(archive, rootPath, projectNode, diagnosticOptions);
+  const search = parseSearchIndex(archive, rootPath, diagnosticOptions);
   const compilePlan = buildCompilePlan(binder, settings);
 
   const binderById = new Map<string, any>();
@@ -389,6 +397,7 @@ export function parseProject(
     templateFolderUUID: projectNode.TemplateFolderUUID,
     autoComplete: settings.autoComplete,
     binderSections,
+    diagnostics: diagnostics.length ? diagnostics : undefined,
     archive: {
       root: rootPath,
       scrivxPath,

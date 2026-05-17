@@ -23,6 +23,12 @@ export class ScrivenerArchive {
 
   private caseInsensitive = new Map<string, string>();
 
+  private sortedPaths?: string[];
+
+  private listCache = new Map<string, string[]>();
+
+  private suffixResolutionCache = new Map<string, string | undefined>();
+
   constructor(entries: Iterable<[string, Uint8Array]>) {
     for (const [rawPath, data] of entries) {
       const normalized = normalizePath(rawPath);
@@ -68,9 +74,15 @@ export class ScrivenerArchive {
     */
   list(prefix = ''): string[] {
     const normalizedPrefix = normalizePath(prefix);
-    return Array.from(this.files.keys())
-      .filter((path) => !normalizedPrefix || path.startsWith(normalizedPrefix))
-      .sort();
+    const cached = this.listCache.get(normalizedPrefix);
+    if (cached) {
+      return [...cached];
+    }
+
+    const paths = this.getSortedPaths()
+      .filter((path) => !normalizedPrefix || path.startsWith(normalizedPrefix));
+    this.listCache.set(normalizedPrefix, paths);
+    return [...paths];
   }
 
   /**
@@ -119,12 +131,25 @@ export class ScrivenerArchive {
       return this.caseInsensitive.get(lower);
     }
     // Try suffix match to support archives that include a root folder
-    const matches = Array.from(this.files.keys()).filter(
+    if (this.suffixResolutionCache.has(normalized)) {
+      return this.suffixResolutionCache.get(normalized);
+    }
+    const matches = this.getSortedPaths().filter(
       (entry) => entry === normalized || entry.endsWith(`/${normalized}`),
     );
     if (matches.length === 1) {
-      return matches[0];
+      const match = matches[0];
+      this.suffixResolutionCache.set(normalized, match);
+      return match;
     }
+    this.suffixResolutionCache.set(normalized, undefined);
     return undefined;
+  }
+
+  private getSortedPaths(): string[] {
+    if (!this.sortedPaths) {
+      this.sortedPaths = Array.from(this.files.keys()).sort();
+    }
+    return this.sortedPaths;
   }
 }

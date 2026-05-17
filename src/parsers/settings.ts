@@ -31,32 +31,70 @@ import { yesNo } from '../utils/strings.js';
 import { parseXml } from '../utils/xml.js';
 import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { rtfToText } from '../rtf/rtfToText.js';
+import {
+  recordParserDiagnostic,
+  tryOptionalParse,
+  type ParserDiagnosticSink,
+} from '../utils/diagnostics.js';
 
 function joinPath(base: string, child: string): string {
   return base ? `${base.replace(/\/$/, '')}/${child}` : child;
 }
 
-function readXmlFile(archive: ScrivenerArchive, path: string): unknown {
+function readXmlFile(
+  archive: ScrivenerArchive,
+  path: string,
+  options?: ParserDiagnosticSink,
+): unknown {
   if (!archive.has(path)) {
     return undefined;
   }
-  return parseXml(archive.readText(path));
+  return tryOptionalParse(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path,
+    },
+    undefined,
+    () => parseXml(archive.readText(path)),
+  );
 }
 
-function readPlistFile(archive: ScrivenerArchive, path: string): unknown {
+function readPlistFile(
+  archive: ScrivenerArchive,
+  path: string,
+  options?: ParserDiagnosticSink,
+): unknown {
   if (!archive.has(path)) {
     return undefined;
   }
-  return plist.parse(archive.readText(path));
+  return tryOptionalParse(
+    options,
+    {
+      code: 'plist_parse_failed',
+      path,
+    },
+    undefined,
+    () => plist.parse(archive.readText(path)),
+  );
 }
 
-function readJsonFile(archive: ScrivenerArchive, path: string): unknown {
+function readJsonFile(
+  archive: ScrivenerArchive,
+  path: string,
+  options?: ParserDiagnosticSink,
+): unknown {
   if (!archive.has(path)) {
     return undefined;
   }
   try {
     return JSON.parse(archive.readText(path));
-  } catch {
+  } catch (error) {
+    recordParserDiagnostic(options, {
+      code: 'json_parse_failed',
+      path,
+      error,
+    });
     return undefined;
   }
 }
@@ -390,7 +428,11 @@ function parseCompileFormats(rawFormats: Record<string, unknown>): Record<string
   return formats;
 }
 
-function readCompileFormats(archive: ScrivenerArchive, base: string): {
+function readCompileFormats(
+  archive: ScrivenerArchive,
+  base: string,
+  options?: ParserDiagnosticSink,
+): {
   raw: Record<string, unknown>;
   parsed: Record<string, ScrivenerCompileFormat>;
 } {
@@ -402,7 +444,18 @@ function readCompileFormats(archive: ScrivenerArchive, base: string): {
   for (const path of files) {
     const relative = path.slice(formatsPath.length + 1);
     const name = relative.replace(/\.[^.]+$/, '');
-    raw[name] = parseXml(archive.readText(path));
+    const parsed = tryOptionalParse(
+      options,
+      {
+        code: 'xml_parse_failed',
+        path,
+      },
+      undefined,
+      () => parseXml(archive.readText(path)),
+    );
+    if (parsed !== undefined) {
+      raw[name] = parsed;
+    }
   }
   return {
     raw,
@@ -965,7 +1018,11 @@ function parseUiState(raw: unknown): ScrivenerUiState | undefined {
   return hasValues ? ui : undefined;
 }
 
-function parseLegacyCompile(archive: ScrivenerArchive, base: string): Record<string, ScrivenerLegacyCompilePreset> | undefined {
+function parseLegacyCompile(
+  archive: ScrivenerArchive,
+  base: string,
+  options?: ParserDiagnosticSink,
+): Record<string, ScrivenerLegacyCompilePreset> | undefined {
   const legacyPath = joinPath(base, 'Settings/LegacyCompile');
   const files = archive
     .list(legacyPath)
@@ -983,7 +1040,7 @@ function parseLegacyCompile(archive: ScrivenerArchive, base: string): Record<str
     }
     const presetId = parts.length > 1 ? parts[0] : 'default';
     const fileName = parts.length > 1 ? parts.slice(1).join('/') : parts[0];
-    const parsed = asStructuredObject(readPlistFile(archive, path)) ?? {};
+    const parsed = asStructuredObject(readPlistFile(archive, path, options)) ?? {};
     const existing = presets.get(presetId) ?? {
       id: presetId,
       title: undefined,
@@ -1000,11 +1057,15 @@ function parseLegacyCompile(archive: ScrivenerArchive, base: string): Record<str
   return Object.fromEntries([...presets.entries()]);
 }
 
-export function parseSettings(archive: ScrivenerArchive, basePath: string): ScrivenerSettingsData {
-  const compileRaw = readXmlFile(archive, joinPath(basePath, 'Settings/compile.xml'));
-  const compileFormatsData = readCompileFormats(archive, basePath);
-  const templateInfoRaw = readXmlFile(archive, joinPath(basePath, 'Settings/templateinfo.xml'));
-  const scriptFormatRaw = readXmlFile(archive, joinPath(basePath, 'Settings/scriptformat.xml'));
+export function parseSettings(
+  archive: ScrivenerArchive,
+  basePath: string,
+  options: ParserDiagnosticSink = {},
+): ScrivenerSettingsData {
+  const compileRaw = readXmlFile(archive, joinPath(basePath, 'Settings/compile.xml'), options);
+  const compileFormatsData = readCompileFormats(archive, basePath, options);
+  const templateInfoRaw = readXmlFile(archive, joinPath(basePath, 'Settings/templateinfo.xml'), options);
+  const scriptFormatRaw = readXmlFile(archive, joinPath(basePath, 'Settings/scriptformat.xml'), options);
   const tutorialRaw = archive.has(joinPath(basePath, 'Settings/tutorial'))
     ? archive.readText(joinPath(basePath, 'Settings/tutorial'))
     : undefined;
@@ -1014,17 +1075,17 @@ export function parseSettings(archive: ScrivenerArchive, basePath: string): Scri
     compileRaw,
     compileFormats: compileFormatsData.parsed,
     compileFormatsRaw: compileFormatsData.raw,
-    favorites: parseFavorites(readXmlFile(archive, joinPath(basePath, 'Settings/favorites.xml'))),
-    mobile: readJsonFile(archive, joinPath(basePath, 'Settings/mobile.settings')),
-    projectPreferences: parseProjectPreferences(readXmlFile(archive, joinPath(basePath, 'Settings/projectpreferences.xml'))),
+    favorites: parseFavorites(readXmlFile(archive, joinPath(basePath, 'Settings/favorites.xml'), options)),
+    mobile: readJsonFile(archive, joinPath(basePath, 'Settings/mobile.settings'), options),
+    projectPreferences: parseProjectPreferences(readXmlFile(archive, joinPath(basePath, 'Settings/projectpreferences.xml'), options)),
     recents: readRecents(archive, joinPath(basePath, 'Settings/recents.txt')),
-    ui: parseUiState(readPlistFile(archive, joinPath(basePath, 'Settings/ui.plist'))),
-    uiCommon: parseUiCommon(readXmlFile(archive, joinPath(basePath, 'Settings/ui-common.xml'))),
+    ui: parseUiState(readPlistFile(archive, joinPath(basePath, 'Settings/ui.plist'), options)),
+    uiCommon: parseUiCommon(readXmlFile(archive, joinPath(basePath, 'Settings/ui-common.xml'), options)),
     compileIni: readIniFile(archive, joinPath(basePath, 'Settings/compile.ini')),
     uiIni: readIniFile(archive, joinPath(basePath, 'Settings/ui.ini')),
     templateInfo: parseTemplateInfo(templateInfoRaw),
     scriptFormat: parseScriptFormat(scriptFormatRaw),
-    legacyCompile: parseLegacyCompile(archive, basePath),
+    legacyCompile: parseLegacyCompile(archive, basePath, options),
     tutorial: parseTutorialInfo(tutorialRaw),
   };
 }

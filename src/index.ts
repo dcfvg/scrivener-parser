@@ -32,6 +32,7 @@ export type {
   ScrivenerPlaceholder,
   ScrivenerPlaceholderLocation,
   ScrivenerParserOptions,
+  ScrivenerParserDiagnostic,
   ScrivenerProjectInfo,
   ScrivenerSettingsData,
   ScrivenerSnapshot,

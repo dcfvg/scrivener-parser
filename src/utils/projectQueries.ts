@@ -16,8 +16,8 @@ import { buildBoolQuery } from './boolQuery.js';
 function flattenBinder(nodes: ScrivenerBinderNode[]): ScrivenerBinderNode[] {
   const result: ScrivenerBinderNode[] = [];
   const stack = [...nodes];
-  while (stack.length) {
-    const node = stack.shift();
+  for (let index = 0; index < stack.length; index += 1) {
+    const node = stack[index];
     if (!node) continue;
     result.push(node);
     if (node.children?.length) {
@@ -185,9 +185,29 @@ function matchTextual(
 function selectSearchDoc(
   searchIndex: ScrivenerSearchIndex | undefined,
   node: ScrivenerBinderNode,
+  lookup?: Map<string, ScrivenerSearchIndexDocument>,
 ): ScrivenerSearchIndexDocument | undefined {
   if (!searchIndex) return undefined;
+  if (lookup) {
+    return lookup.get(String(node.textId ?? '')) ?? lookup.get(node.uuid);
+  }
   return searchIndex.documents.find((doc) => doc.id === node.textId || doc.id === node.uuid);
+}
+
+function buildSearchDocLookup(
+  searchIndex: ScrivenerSearchIndex | undefined,
+): Map<string, ScrivenerSearchIndexDocument> | undefined {
+  if (!searchIndex?.documents?.length) {
+    return undefined;
+  }
+  const map = new Map<string, ScrivenerSearchIndexDocument>();
+  for (const doc of searchIndex.documents) {
+    const id = String(doc.id ?? '').trim();
+    if (id) {
+      map.set(id, doc);
+    }
+  }
+  return map;
 }
 
 /**
@@ -200,8 +220,9 @@ export function matchesCollectionSearch(
   node: ScrivenerBinderNode,
   doc?: ScrivenerDocumentContent,
   searchIndex?: ScrivenerSearchIndex,
+  searchDocLookup?: Map<string, ScrivenerSearchIndexDocument>,
 ): boolean {
-  const searchDoc = selectSearchDoc(searchIndex, node);
+  const searchDoc = selectSearchDoc(searchIndex, node, searchDocLookup);
   const searchType = (search.type ?? (search as any).Type ?? '').toString();
   switch (searchType) {
     case 'Label':
@@ -236,6 +257,7 @@ export function findCollectionMatches(
     }
     return [];
   }
+  const searchDocLookup = buildSearchDocLookup(project.search);
   return flat.filter((node) =>
     matchesCollectionSearch(
       search,
@@ -243,6 +265,7 @@ export function findCollectionMatches(
       node,
       findDocumentForNode(project.documents, node),
       project.search,
+      searchDocLookup,
     ),
   );
 }
@@ -353,12 +376,17 @@ export function findParagraphsWithPlaceholders(
 ): PlaceholderParagraphMatch[] {
   const matches: PlaceholderParagraphMatch[] = [];
   const binderMap = ensureBinderMap(project);
+  const placeholdersByUuid = new Map<string, ScrivenerPlaceholderLocation[]>();
+  for (const placeholder of collectPlaceholders(project, { includeNotes: false })) {
+    const list = placeholdersByUuid.get(placeholder.uuid) ?? [];
+    list.push(placeholder);
+    placeholdersByUuid.set(placeholder.uuid, list);
+  }
+
   for (const doc of Object.values(project.documents)) {
     if (!doc.textPlain) continue;
     const node = binderMap.get(doc.uuid);
-    const placeholders = collectPlaceholders(project, { includeNotes: false }).filter(
-      (ph) => ph.uuid === doc.uuid,
-    );
+    const placeholders = placeholdersByUuid.get(doc.uuid) ?? [];
     if (!placeholders.length) continue;
     const paragraphs = splitParagraphsWithOffsets(doc.textPlain);
     for (const para of paragraphs) {

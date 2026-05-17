@@ -914,6 +914,14 @@ export interface ScrivenerResources {
   quickLook?: string;
 }
 
+export interface ScrivenerParserDiagnostic {
+  level: 'warning' | 'error';
+  code: string;
+  message: string;
+  path?: string;
+  documentId?: string;
+}
+
 export interface ScrivenerParserOptions {
   decodeRtf?: boolean;
   includeBinaryAssets?: boolean;
@@ -931,6 +939,8 @@ export interface ScrivenerParserOptions {
   extractTables?: boolean;
   normalizeBinderSections?: boolean;
   computeTextCounts?: boolean;
+  tolerant?: boolean;
+  diagnostics?: ScrivenerParserDiagnostic[];
 }
 
 export interface ParsedScrivenerProject {
@@ -947,6 +957,7 @@ export interface ParsedScrivenerProject {
   autoComplete?: string[];
   templateFolderUUID?: string;
   binderSections?: ScrivenerBinderSections;
+  diagnostics?: ScrivenerParserDiagnostic[];
   archive: {
     root: string;
     scrivxPath: string;

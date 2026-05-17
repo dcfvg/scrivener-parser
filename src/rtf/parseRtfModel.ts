@@ -70,6 +70,12 @@ interface PdfScratch {
   fileNameRaw?: string;
 }
 
+interface PreprocessedRtf {
+  content: string;
+  footnotes: ScrivenerFootnote[];
+  annotations: ScrivenerInlineAnnotation[];
+}
+
 interface GroupState {
   start: number;
   uc: number;
@@ -610,11 +616,7 @@ function findNearestPdf(groupStack: GroupState[]): GroupState | undefined {
   return undefined;
 }
 
-function preprocessEmbeddedScrivenerMarkup(content: string): {
-  content: string;
-  footnotes: ScrivenerFootnote[];
-  annotations: ScrivenerInlineAnnotation[];
-} {
+function preprocessEmbeddedScrivenerMarkup(content: string): PreprocessedRtf {
   const footnotes: ScrivenerFootnote[] = [];
   const annotations: ScrivenerInlineAnnotation[] = [];
 
@@ -647,10 +649,11 @@ function preprocessEmbeddedScrivenerMarkup(content: string): {
   };
 }
 
-export function parseRtfModel(content: string): ParsedRtfModel {
-  const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
-  const tokens = tokenizeRtf(preprocessed.content);
-  const properties = parseRtfPropertiesFromTokens(tokens);
+function parsePreprocessedRtfModel(
+  preprocessed: PreprocessedRtf,
+  tokens: RtfToken[],
+  properties = parseRtfPropertiesFromTokens(tokens),
+): ParsedRtfModel {
   const paragraphs: InternalParagraph[] = [createParagraph()];
   const groupStack: GroupState[] = [];
   const fields: ScrivenerField[] = [];
@@ -947,4 +950,21 @@ export function parseRtfModel(content: string): ParsedRtfModel {
     embeddedImages,
     embeddedPdfs,
   };
+}
+
+export function parseRtfModelFromTokens(
+  content: string,
+  tokens: RtfToken[],
+  properties?: ScrivenerRtfProperties,
+): ParsedRtfModel {
+  const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
+  if (preprocessed.content === content) {
+    return parsePreprocessedRtfModel(preprocessed, tokens, properties);
+  }
+  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content));
+}
+
+export function parseRtfModel(content: string): ParsedRtfModel {
+  const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
+  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content));
 }

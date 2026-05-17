@@ -2,6 +2,7 @@ import type { ScrivenerProjectTargets, ScrivenerStats, ScrivenerWritingHistoryEn
 import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray, asNumber } from '../utils/collections.js';
+import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
 function joinPath(base: string, child: string): string {
   return base ? `${base.replace(/\/$/, '')}/${child}` : child;
@@ -29,12 +30,27 @@ function parseTargets(node: any): ScrivenerProjectTargets {
   };
 }
 
-function parseWritingHistory(archive: ScrivenerArchive, basePath: string): ScrivenerWritingHistoryEntry[] {
+function parseWritingHistory(
+  archive: ScrivenerArchive,
+  basePath: string,
+  options: ParserDiagnosticSink,
+): ScrivenerWritingHistoryEntry[] {
   const path = joinPath(basePath, 'Files/writing.history');
   if (!archive.has(path)) {
     return [];
   }
-  const xml = parseXml<any>(archive.readText(path));
+  const xml = tryOptionalParse<any | undefined>(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path,
+    },
+    undefined,
+    () => parseXml<any>(archive.readText(path)),
+  );
+  if (!xml) {
+    return [];
+  }
   const days = toArray(xml?.WritingHistory?.Day ?? []);
   return days.map((day: any) => ({
     date: String(day['#text'] ?? day.Text ?? ''),
@@ -53,10 +69,11 @@ export function parseStats(
   archive: ScrivenerArchive,
   basePath: string,
   projectNode: any,
+  options: ParserDiagnosticSink = {},
 ): ScrivenerStats {
   return {
     projectTargets: parseTargets(projectNode.ProjectTargets ?? {}),
     recentWritingHistory: projectNode.RecentWritingHistory,
-    writingHistory: parseWritingHistory(archive, basePath),
+    writingHistory: parseWritingHistory(archive, basePath, options),
   };
 }

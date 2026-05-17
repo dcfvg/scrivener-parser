@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseDocuments } from '../src/parsers/documents.js';
 import { parseProject } from '../src/parsers/project.js';
+import type { ScrivenerParserDiagnostic } from '../src/types.js';
 
 const BASE_PARSE_OPTIONS = {
   basePath: '',
@@ -298,4 +299,32 @@ test('parseProject keeps unmatched RTF stylesheet spans as canonical names', () 
     start: 7,
     end: 15,
   });
+});
+
+test('parseProject can continue past corrupt optional files in tolerant mode', () => {
+  const diagnostics: ScrivenerParserDiagnostic[] = [];
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject>
+  <Binder>
+    <BinderItem UUID="DOC-1" Type="Text"><Title>Doc one</Title></BinderItem>
+  </Binder>
+</ScrivenerProject>`,
+    'Files/Data/DOC-1/content.rtf': String.raw`{\rtf1\ansi Body}`,
+    'Files/Data/DOC-1/content.comments': '<',
+    'Files/search.indexes': '<',
+    'Settings/templateinfo.xml': '<',
+  });
+
+  const project = parseProject(archive, {
+    loadSnapshots: false,
+    tolerant: true,
+    diagnostics,
+  });
+
+  assert.equal(project.documents['DOC-1']?.textPlain, 'Body');
+  assert.equal(project.documents['DOC-1']?.comments?.length, 0);
+  assert.equal(project.search.documents.length, 0);
+  assert.equal(project.diagnostics, diagnostics);
+  assert.ok(diagnostics.length >= 3);
+  assert.ok(diagnostics.every((diagnostic) => diagnostic.code === 'xml_parse_failed'));
 });

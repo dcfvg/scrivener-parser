@@ -4,8 +4,9 @@ import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
+import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
-interface ResourceOptions {
+interface ResourceOptions extends ParserDiagnosticSink {
   basePath: string;
   includeBinaryAssets: boolean;
 }
@@ -77,11 +78,26 @@ function normalizeStyleUiColor(value: unknown): string | undefined {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function parseStyles(archive: ScrivenerArchive, path: string): ScrivenerStyleDefinition[] {
+function parseStyles(
+  archive: ScrivenerArchive,
+  path: string,
+  options: ParserDiagnosticSink,
+): ScrivenerStyleDefinition[] {
   if (!archive.has(path)) {
     return [];
   }
-  const xml = parseXml<any>(archive.readText(path));
+  const xml = tryOptionalParse<any | undefined>(
+    options,
+    {
+      code: 'xml_parse_failed',
+      path,
+    },
+    undefined,
+    () => parseXml<any>(archive.readText(path)),
+  );
+  if (!xml) {
+    return [];
+  }
   const styles = toArray(xml?.Styles?.Style ?? []);
   return styles.map((style: any) => ({
     id: style.ID,
@@ -163,7 +179,7 @@ export function parseResources(
   options: ResourceOptions,
 ): ScrivenerResources {
   return {
-    styles: parseStyles(archive, joinPath(options.basePath, 'Files/styles.xml')),
+    styles: parseStyles(archive, joinPath(options.basePath, 'Files/styles.xml'), options),
     version: archive.has(joinPath(options.basePath, 'Files/version.txt'))
       ? archive.readText(joinPath(options.basePath, 'Files/version.txt')).trim()
       : undefined,
