@@ -15,6 +15,7 @@ import type {
   ScrivenerTextRun,
 } from '../types.js';
 import { parseRtfModel, parseRtfModelFromTokens } from './parseRtfModel.js';
+import type { ParseRtfModelOptions } from './parseRtfModel.js';
 import type { RtfToken } from './tokenizeRtf.js';
 
 export interface RtfExtras {
@@ -39,6 +40,7 @@ export interface RtfExtras {
 export interface RtfExtrasInput {
   tokens?: RtfToken[];
   properties?: ScrivenerRtfProperties;
+  modelOptions?: ParseRtfModelOptions;
 }
 
 function extractBookmarks(rtf: string): ScrivenerBookmark[] {
@@ -73,8 +75,8 @@ function extractTables(rtf: string): Array<{ start: number; end: number }> {
 
 export function extractRtfExtras(rtf: string, input: RtfExtrasInput = {}): RtfExtras {
   const model = input.tokens?.length
-    ? parseRtfModelFromTokens(rtf, input.tokens, input.properties)
-    : parseRtfModel(rtf);
+    ? parseRtfModelFromTokens(rtf, input.tokens, input.properties, input.modelOptions)
+    : parseRtfModel(rtf, input.modelOptions);
   const linkedImages = model.linkedImages;
   const hyperlinks = model.fields
     .filter((field) => field.kind === 'hyperlink' && field.url)

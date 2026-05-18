@@ -118,7 +118,14 @@ export function parseRtfContent(
       rtfModel: emptyRtfModel(tokenized?.properties),
     };
   }
-  const extras = extractRtfExtras(sourceRtf, tokenized);
+  const extras = extractRtfExtras(sourceRtf, {
+    tokens: tokenized?.tokens,
+    properties: tokenized?.properties,
+    modelOptions: {
+      extractEmbeddedImages: Boolean(options.extractEmbeddedImages),
+      extractEmbeddedPdfs: Boolean(options.extractEmbeddedImages),
+    },
+  });
   const plainText = options.decodeRtf !== false ? extras.plainText : undefined;
 
   const parsed: ParsedRtfContent = {

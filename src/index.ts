@@ -1,6 +1,7 @@
 export { ScrivenerArchive } from './archive/ScrivenerArchive.js';
 export type {
   ParsedScrivenerProject,
+  ParsedScrivenerProjectBinder,
   ScrivenerBinderBookmark,
   ScrivenerBinderNode,
   ScrivenerDocumentContent,
@@ -60,6 +61,7 @@ export type {
 } from './types.js';
 export type { DocumentParsingOptions } from './parsers/documents.js';
 export { parseProject as parseScrivenerProject } from './parsers/project.js';
+export { parseProjectBinder as parseScrivenerProjectBinder } from './parsers/project.js';
 export { parseDocuments as parseScrivenerDocuments } from './parsers/documents.js';
 export { parseResources as parseScrivenerResources } from './parsers/resources.js';
 export { parseRtfContent } from './parsers/rtf-content.js';

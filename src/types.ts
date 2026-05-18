@@ -964,6 +964,18 @@ export interface ParsedScrivenerProject {
   };
 }
 
+export interface ParsedScrivenerProjectBinder {
+  info: ScrivenerProjectInfo;
+  binder: ScrivenerBinderNode[];
+  metadata: ScrivenerMetaSettings;
+  binderSections?: ScrivenerBinderSections;
+  diagnostics?: ScrivenerParserDiagnostic[];
+  archive: {
+    root: string;
+    scrivxPath: string;
+  };
+}
+
 export interface ScrivenerBinderSections {
   draft?: ScrivenerBinderNode;
   research?: ScrivenerBinderNode;

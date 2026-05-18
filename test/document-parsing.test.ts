@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseDocuments } from '../src/parsers/documents.js';
-import { parseProject } from '../src/parsers/project.js';
+import { parseProject, parseProjectBinder } from '../src/parsers/project.js';
 import type { ScrivenerParserDiagnostic } from '../src/types.js';
 
 const BASE_PARSE_OPTIONS = {
@@ -327,4 +327,29 @@ test('parseProject can continue past corrupt optional files in tolerant mode', (
   assert.equal(project.diagnostics, diagnostics);
   assert.ok(diagnostics.length >= 3);
   assert.ok(diagnostics.every((diagnostic) => diagnostic.code === 'xml_parse_failed'));
+});
+
+test('parseProjectBinder reads binder metadata without parsing documents', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject Identifier="P1" Version="2.0">
+  <Binder>
+    <BinderItem UUID="DRAFT" Type="DraftFolder">
+      <Title>Draft</Title>
+      <Children>
+        <BinderItem UUID="DOC-1" Type="Text"><Title>Doc one</Title></BinderItem>
+      </Children>
+    </BinderItem>
+  </Binder>
+</ScrivenerProject>`,
+    'Files/Data/DOC-1/content.rtf': String.raw`{\rtf1\ansi Body}`,
+  });
+
+  const project = parseProjectBinder(archive, {
+    normalizeBinderSections: true,
+  });
+
+  assert.equal(project.info.identifier, 'P1');
+  assert.equal(project.binder[0]?.children[0]?.uuid, 'DOC-1');
+  assert.equal(project.binderSections?.draft?.uuid, 'DRAFT');
+  assert.equal('documents' in project, false);
 });

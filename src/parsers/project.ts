@@ -1,6 +1,12 @@
 import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import { parseXml } from '../utils/xml.js';
-import type { ParsedScrivenerProject, ScrivenerParserOptions, ScrivenerProjectInfo } from '../types.js';
+import type {
+  ParsedScrivenerProject,
+  ParsedScrivenerProjectBinder,
+  ScrivenerBinderNode,
+  ScrivenerParserOptions,
+  ScrivenerProjectInfo,
+} from '../types.js';
 import { parseBinder } from './binder.js';
 import { parseDocuments } from './documents.js';
 import { parseMetaSettings } from './metadata.js';
@@ -247,6 +253,44 @@ function applyBinderDisplayTitles(nodes: any[], documents: Record<string, any>) 
   }
 }
 
+function normalizeTopLevelBinderSections(binder: ScrivenerBinderNode[]) {
+  const draft = binder.find((n) => n.type === 'DraftFolder' || n.type === 'Draft');
+  const research = binder.find((n) => n.type === 'ResearchFolder' || n.type === 'Research');
+  const trash = binder.find((n) => n.type === 'TrashFolder' || n.type === 'Trash');
+  const extras = binder.filter((n) => n !== draft && n !== research && n !== trash);
+  return { draft, research, trash, extras };
+}
+
+export function parseProjectBinder(
+  archive: ScrivenerArchive,
+  options: ScrivenerParserOptions = {},
+): ParsedScrivenerProjectBinder {
+  const scrivxPath = findScrivxPath(archive);
+  const rootPath = deriveRoot(scrivxPath);
+  const projectTree = parseXml<any>(archive.readText(scrivxPath));
+  const projectNode = projectTree?.ScrivenerProject ?? projectTree;
+  const diagnostics = options.diagnostics ?? [];
+  const metadata = parseMetaSettings(projectNode);
+  const binder = projectNode.Binder
+    ? parseBinder(projectNode.Binder, {
+        customMetaFields: metadata.customMeta,
+        sectionTypes: metadata.sectionTypes,
+      })
+    : [];
+
+  return {
+    info: getProjectInfo(projectNode),
+    binder,
+    metadata,
+    binderSections: options.normalizeBinderSections ? normalizeTopLevelBinderSections(binder) : undefined,
+    diagnostics: diagnostics.length ? diagnostics : undefined,
+    archive: {
+      root: rootPath,
+      scrivxPath,
+    },
+  };
+}
+
 export function parseProject(
   archive: ScrivenerArchive,
   options: ScrivenerParserOptions = {},
@@ -376,11 +420,7 @@ export function parseProject(
 
   let binderSections;
   if (normalizeBinderSections) {
-    const draft = binder.find((n) => n.type === 'DraftFolder' || n.type === 'Draft');
-    const research = binder.find((n) => n.type === 'ResearchFolder' || n.type === 'Research');
-    const trash = binder.find((n) => n.type === 'TrashFolder' || n.type === 'Trash');
-    const extras = binder.filter((n) => n !== draft && n !== research && n !== trash);
-    binderSections = { draft, research, trash, extras };
+    binderSections = normalizeTopLevelBinderSections(binder);
   }
 
   return {

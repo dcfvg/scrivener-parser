@@ -160,6 +160,26 @@ test('extracts embedded images from pict groups', () => {
   assert.ok((extras.embeddedImages[0]?.base64?.length ?? 0) > 10);
 });
 
+test('parseRtfContent skips embedded pict payloads unless requested', () => {
+  const rtf = readFixture('test', 'fixtures', 'pict.rtf');
+
+  const parsed = parseRtfContent(rtf, {
+    decodeRtf: true,
+    extractEmbeddedImages: false,
+  });
+
+  assert.equal(parsed.embeddedImages, undefined);
+  assert.equal(parsed.assets?.some((asset) => asset.type === 'embedded-image') ?? false, false);
+
+  const withImages = parseRtfContent(rtf, {
+    decodeRtf: true,
+    extractEmbeddedImages: true,
+  });
+
+  assert.ok((withImages.embeddedImages?.length ?? 0) >= 1);
+  assert.ok(withImages.assets?.some((asset) => asset.type === 'embedded-image') ?? false);
+});
+
 test('extracts RTF document properties from font, color and style tables', () => {
   const rtf = String.raw`{\rtf1\ansi\ansicpg950\deff1
 {\fonttbl{\f0\froman\fcharset0 Times New Roman;}{\f1\fswiss Helvetica;}}

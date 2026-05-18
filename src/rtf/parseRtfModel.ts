@@ -104,6 +104,11 @@ export interface ParsedRtfModel {
   embeddedPdfs: ScrivenerEmbeddedPdf[];
 }
 
+export interface ParseRtfModelOptions {
+  extractEmbeddedImages?: boolean;
+  extractEmbeddedPdfs?: boolean;
+}
+
 function createParagraph(): InternalParagraph {
   return { runs: [] };
 }
@@ -653,6 +658,7 @@ function parsePreprocessedRtfModel(
   preprocessed: PreprocessedRtf,
   tokens: RtfToken[],
   properties = parseRtfPropertiesFromTokens(tokens),
+  options: ParseRtfModelOptions = {},
 ): ParsedRtfModel {
   const paragraphs: InternalParagraph[] = [createParagraph()];
   const groupStack: GroupState[] = [];
@@ -664,6 +670,8 @@ function parsePreprocessedRtfModel(
   const embeddedPdfs: ScrivenerEmbeddedPdf[] = [];
   let uc = 1;
   let skipAscii = 0;
+  const shouldExtractEmbeddedImages = options.extractEmbeddedImages !== false;
+  const shouldExtractEmbeddedPdfs = options.extractEmbeddedPdfs !== false;
 
   const appendVisible = (value: string, source = currentVisibleSource(groupStack)) => {
     if (!value) {
@@ -705,22 +713,26 @@ function parsePreprocessedRtfModel(
       if (!group) {
         continue;
       }
-      const raw = preprocessed.content.slice(group.start, token.end);
+      let raw: string | undefined;
+      const readRaw = () => {
+        raw ??= preprocessed.content.slice(group.start, token.end);
+        return raw;
+      };
 
       if (group.destination === 'fldinst') {
         const field = findNearestField(groupStack);
         if (field?.field) {
-          field.field.instructionRaw = raw;
+          field.field.instructionRaw = readRaw();
         }
       } else if (group.destination === 'fldrslt') {
         const field = findNearestField(groupStack);
         if (field?.field) {
-          field.field.resultRaw = raw;
+          field.field.resultRaw = readRaw();
         }
       } else if (group.destination === 'pdffilename') {
         const pdf = findNearestPdf(groupStack);
         if (pdf?.pdf) {
-          pdf.pdf.fileNameRaw = raw;
+          pdf.pdf.fileNameRaw = readRaw();
         }
       } else if (group.destination === 'field') {
         const instruction = group.field?.instructionRaw
@@ -744,42 +756,44 @@ function parsePreprocessedRtfModel(
           });
         }
       } else if (group.destination === 'Scrv_fn') {
-        const text = extractFootnoteText(raw);
+        const rawValue = readRaw();
+        const text = extractFootnoteText(rawValue);
         const tokenValue = encodeScrivenerFootnoteToken(text ?? '');
-        const directives = extractInternalScrivenerDirectives(raw);
+        const directives = extractInternalScrivenerDirectives(rawValue);
         footnotes.push({
           id: String(footnotes.length + 1),
           token: tokenValue,
           text,
-          rawRtf: raw,
+          rawRtf: rawValue,
         });
         if (directives) {
           appendVisible(directives);
         }
         appendVisible(tokenValue, 'footnote-token');
       } else if (group.destination === 'Scrv_annot') {
-        const directives = extractInternalScrivenerDirectives(raw);
+        const rawValue = readRaw();
+        const directives = extractInternalScrivenerDirectives(rawValue);
         annotations.push({
-          raw,
-          text: extractAnnotationText(raw),
-          color: extractAnnotationColor(raw),
-          styleRef: extractAnnotationStyleRef(raw),
+          raw: rawValue,
+          text: extractAnnotationText(rawValue),
+          color: extractAnnotationColor(rawValue),
+          styleRef: extractAnnotationStyleRef(rawValue),
         });
         if (directives) {
           appendVisible(directives);
         }
-      } else if (group.destination === 'pict') {
-        const image = parsePict(raw, Math.max(0, paragraphs.length - 1));
+      } else if (group.destination === 'pict' && shouldExtractEmbeddedImages) {
+        const image = parsePict(readRaw(), Math.max(0, paragraphs.length - 1));
         if (image) {
           embeddedImages.push(image);
         }
-      } else if (group.destination === 'scrivenerpdf') {
-        const pdf = parseEmbeddedPdf(raw, Math.max(0, paragraphs.length - 1), group.pdf?.fileNameRaw);
+      } else if (group.destination === 'scrivenerpdf' && shouldExtractEmbeddedPdfs) {
+        const pdf = parseEmbeddedPdf(readRaw(), Math.max(0, paragraphs.length - 1), group.pdf?.fileNameRaw);
         if (pdf) {
           embeddedPdfs.push(pdf);
         }
       } else if (group.destination === 'listtext') {
-        const marker = extractListMarker(raw);
+        const marker = extractListMarker(readRaw());
         if (marker) {
           paragraphs[paragraphs.length - 1].list = {
             marker,
@@ -956,15 +970,16 @@ export function parseRtfModelFromTokens(
   content: string,
   tokens: RtfToken[],
   properties?: ScrivenerRtfProperties,
+  options: ParseRtfModelOptions = {},
 ): ParsedRtfModel {
   const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
   if (preprocessed.content === content) {
-    return parsePreprocessedRtfModel(preprocessed, tokens, properties);
+    return parsePreprocessedRtfModel(preprocessed, tokens, properties, options);
   }
-  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content));
+  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content), undefined, options);
 }
 
-export function parseRtfModel(content: string): ParsedRtfModel {
+export function parseRtfModel(content: string, options: ParseRtfModelOptions = {}): ParsedRtfModel {
   const preprocessed = preprocessEmbeddedScrivenerMarkup(content);
-  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content));
+  return parsePreprocessedRtfModel(preprocessed, tokenizeRtf(preprocessed.content), undefined, options);
 }
