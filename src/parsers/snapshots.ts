@@ -1,10 +1,17 @@
 import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
-import type { ScrivenerSnapshot } from '../types.js';
+import type { ScrivenerComment, ScrivenerSnapshot, ScrivenerStyleDefinition } from '../types.js';
 import { parseXml } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { rtfToText } from '../rtf/rtfToText.js';
+import { extractStyleSpans } from '../rtf/extractStyleSpans.js';
 import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
 import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
+import { linkCommentAnchors } from './comment-anchors.js';
+import {
+  hasScrivenerCommentNodes,
+  parseScrivenerCommentNodes,
+  readNodeText,
+} from './comments.js';
 
 interface SnapshotOptions extends ParserDiagnosticSink {
   basePath: string;
@@ -17,7 +24,10 @@ interface SnapshotOptions extends ParserDiagnosticSink {
   extractBookmarks?: boolean;
   extractFields?: boolean;
   extractTables?: boolean;
+  extractStyleSpans?: boolean;
   computeTextCounts?: boolean;
+  styleDefinitions?: ScrivenerStyleDefinition[];
+  documentStyleIdsByUuid?: Record<string, string[]>;
 }
 
 function joinPath(base: string, child: string): string {
@@ -28,6 +38,9 @@ interface SnapshotMeta {
   title?: string;
   date?: string;
   text?: string;
+  commentsText?: string;
+  styleIds?: string[];
+  comments?: ScrivenerComment[];
 }
 
 interface SnapshotRtfEntry {
@@ -53,10 +66,39 @@ function dedupeSnapshotMeta(entries: SnapshotMeta[]): SnapshotMeta[] {
       title: previous.title ?? entry.title,
       date: previous.date ?? entry.date,
       text: entry.text ?? previous.text,
+      commentsText: entry.commentsText ?? previous.commentsText,
+      styleIds: previous.styleIds ?? entry.styleIds,
+      comments: previous.comments ?? entry.comments,
     });
   });
 
   return [...deduped.values()];
+}
+
+function parseSnapshotComments(
+  commentsNode: any,
+  options: SnapshotOptions,
+  path: string,
+): ScrivenerComment[] | undefined {
+  const comments = parseScrivenerCommentNodes(commentsNode, options, { path });
+  return comments.length ? comments : undefined;
+}
+
+function parseSnapshotCommentsText(commentsNode: any): string | undefined {
+  if (!commentsNode || hasScrivenerCommentNodes(commentsNode)) {
+    return undefined;
+  }
+  const text = readNodeText(commentsNode);
+  return text?.trim() ? text : undefined;
+}
+
+function parseStyleIds(raw?: string): string[] | undefined {
+  if (!raw) return undefined;
+  const styleIds = raw
+    .split(/[;, \r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return styleIds.length ? styleIds : undefined;
 }
 
 function parseSnapshotMeta(
@@ -83,6 +125,9 @@ function parseSnapshotMeta(
     title: node.Title ?? node['#text'] ?? node.title,
     date: node.Date ?? node.date ?? node['@_Date'],
     text: node.Text ?? node.text,
+    commentsText: parseSnapshotCommentsText(node.Comments ?? node.comments),
+    styleIds: parseStyleIds(node.StyleIDs ?? node.styleIds),
+    comments: parseSnapshotComments(node.Comments ?? node.comments, options as SnapshotOptions, path),
   }));
 }
 
@@ -98,20 +143,25 @@ function filenameToDate(name: string): string | undefined {
 }
 
 function buildSnapshotFromEntry(
+  uuid: string,
   meta: SnapshotMeta,
   entry: SnapshotRtfEntry | undefined,
   options: SnapshotOptions,
 ): ScrivenerSnapshot {
   if (!entry) {
-    return {
+    return linkCommentAnchors({
       title: meta.title,
       date: meta.date,
       rtf: '',
       plainText: meta.text,
       indexText: meta.text,
       hasIndexText: Boolean(meta.text),
+      indexComments: meta.commentsText,
+      hasIndexComments: Boolean(meta.commentsText),
       hasText: false,
-    };
+      styleIds: meta.styleIds,
+      comments: meta.comments,
+    });
   }
 
   const parsed = tryOptionalParse<ParsedRtfContent | undefined>(
@@ -136,7 +186,7 @@ function buildSnapshotFromEntry(
     }),
   );
   if (!parsed) {
-    return {
+    return linkCommentAnchors({
       title: meta.title,
       date: meta.date ?? entry.date,
       rtf: '',
@@ -145,20 +195,38 @@ function buildSnapshotFromEntry(
       hasText: false,
       indexText: meta.text,
       hasIndexText: Boolean(meta.text),
-    };
+      indexComments: meta.commentsText,
+      hasIndexComments: Boolean(meta.commentsText),
+      styleIds: meta.styleIds,
+      comments: meta.comments,
+    });
   }
 
-  return {
+  const plainText = parsed.plainText ?? meta.text ?? rtfToText(parsed.rtf);
+  const styleIds = meta.styleIds ?? options.documentStyleIdsByUuid?.[uuid];
+  const styleSpans = options.extractStyleSpans && options.decodeRtf
+    ? extractStyleSpans(
+      parsed.rtf,
+      plainText,
+      options.styleDefinitions,
+      styleIds,
+    )
+    : undefined;
+
+  return linkCommentAnchors({
     title: meta.title,
     date: meta.date ?? entry.date,
     rtf: parsed.rtf,
-    plainText: parsed.plainText ?? meta.text ?? rtfToText(parsed.rtf),
+    plainText,
     sourceFile: entry.file,
     hasText: true,
+    styleIds: meta.styleIds,
+    comments: meta.comments,
     textWordCount: parsed.textWordCount,
     textCharCount: parsed.textCharCount,
     paragraphs: parsed.paragraphs,
     runs: parsed.runs,
+    styleSpans: styleSpans?.length ? styleSpans : undefined,
     placeholders: parsed.placeholders,
     embeddedImages: parsed.embeddedImages,
     embeddedPdfs: parsed.embeddedPdfs,
@@ -175,7 +243,9 @@ function buildSnapshotFromEntry(
     tables: parsed.tables,
     indexText: meta.text,
     hasIndexText: Boolean(meta.text),
-  };
+    indexComments: meta.commentsText,
+    hasIndexComments: Boolean(meta.commentsText),
+  });
 }
 
 export function parseSnapshots(
@@ -243,7 +313,7 @@ export function parseSnapshots(
         entry = rtfEntries[fallbackIndex];
         fallbackIndex += 1;
       }
-      combined.push(buildSnapshotFromEntry(meta, entry, options));
+      combined.push(buildSnapshotFromEntry(uuid, meta, entry, options));
     }
     snapshotIndex[uuid] = combined;
   }

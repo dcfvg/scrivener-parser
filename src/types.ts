@@ -85,6 +85,7 @@ export interface ScrivenerComment {
   textCharCount?: number;
   paragraphs?: ScrivenerParagraph[];
   runs?: ScrivenerTextRun[];
+  styleSpans?: ScrivenerStyleSpan[];
   placeholders?: ScrivenerPlaceholder[];
   embeddedImages?: ScrivenerEmbeddedImage[];
   embeddedPdfs?: ScrivenerEmbeddedPdf[];
@@ -340,6 +341,8 @@ export interface ScrivenerSnapshot {
   textCharCount?: number;
   paragraphs?: ScrivenerParagraph[];
   runs?: ScrivenerTextRun[];
+  styleIds?: string[];
+  styleSpans?: ScrivenerStyleSpan[];
   placeholders?: ScrivenerPlaceholder[];
   embeddedImages?: ScrivenerEmbeddedImage[];
   embeddedPdfs?: ScrivenerEmbeddedPdf[];
@@ -348,6 +351,7 @@ export interface ScrivenerSnapshot {
   hyperlinks?: ScrivenerHyperlink[];
   bookmarks?: ScrivenerBookmark[];
   fields?: ScrivenerField[];
+  comments?: ScrivenerComment[];
   commentAnchors?: ScrivenerCommentAnchor[];
   footnotes?: ScrivenerFootnote[];
   lists?: ScrivenerRtfList[];
@@ -356,6 +360,8 @@ export interface ScrivenerSnapshot {
   tables?: Array<{ start: number; end: number }>;
   indexText?: string;
   hasIndexText?: boolean;
+  indexComments?: string;
+  hasIndexComments?: boolean;
 }
 
 export interface ScrivenerSnapshotsIndex {

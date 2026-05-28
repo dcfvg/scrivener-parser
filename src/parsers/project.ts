@@ -357,6 +357,7 @@ export function parseProject(
     basePath: rootPath,
     decodeRtf,
     extractPlaceholders,
+    extractStyleSpans,
     extractEmbeddedImages,
     extractInlineAnnotations,
     extractLinkedImages,
@@ -365,6 +366,11 @@ export function parseProject(
     extractFields,
     extractTables,
     computeTextCounts,
+    styleDefinitions: resources.styles,
+    documentStyleIdsByUuid: Object.fromEntries(
+      Object.entries(documents)
+        .map(([uuid, document]) => [uuid, document.styleIds ?? []]),
+    ),
     ...diagnosticOptions,
   }) : {};
   const settings = parseSettings(archive, rootPath, diagnosticOptions);

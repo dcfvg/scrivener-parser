@@ -10,10 +10,11 @@ import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { extractStyleSpans } from '../rtf/extractStyleSpans.js';
 import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
 import { parseXml } from '../utils/xml.js';
-import { toArray } from '../utils/collections.js';
 import { bufferToBase64 } from '../utils/encoding.js';
 import { guessMimeType } from '../utils/mime.js';
 import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
+import { linkCommentAnchors } from './comment-anchors.js';
+import { parseScrivenerCommentNodes } from './comments.js';
 
 export interface DocumentParsingOptions extends ParserDiagnosticSink {
   basePath: string;
@@ -36,19 +37,6 @@ export interface DocumentParsingOptions extends ParserDiagnosticSink {
 
 function joinPath(base: string, child: string): string {
   return base ? `${base.replace(/\/$/, '')}/${child}` : child;
-}
-
-function parseYesNoFlag(value: unknown): boolean | undefined {
-  if (typeof value !== 'string') return undefined;
-  if (value === 'Yes') return true;
-  if (value === 'No') return false;
-  return undefined;
-}
-
-function parseOptionalNumber(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function parseComments(
@@ -83,118 +71,11 @@ function parseComments(
   if (!xml) {
     return [];
   }
-  const comments = toArray(xml?.Comments?.Comment ?? xml?.Comment);
-  return comments.map((comment: any) => {
-    const raw = comment['#text'] ?? comment._cdata ?? comment.CDATA ?? '';
-    const rawRtf = typeof raw === 'string' ? raw : '';
-    const parsed = rawRtf
-      ? tryOptionalParse<ParsedRtfContent | undefined>(
-          options,
-          {
-            code: 'rtf_parse_failed',
-            path: context.path,
-            documentId: context.documentId,
-          },
-          undefined,
-          () => parseRtfContent(rawRtf, {
-            decodeRtf: options.decodeRtf,
-            extractPlaceholders: options.extractPlaceholders,
-            extractEmbeddedImages: options.extractEmbeddedImages,
-            extractInlineAnnotations: options.extractInlineAnnotations,
-            extractLinkedImages: options.extractLinkedImages,
-            extractHyperlinks: options.extractHyperlinks,
-            extractBookmarks: options.extractBookmarks,
-            extractFields: options.extractFields,
-            extractTables: options.extractTables,
-            computeTextCounts: options.computeTextCounts,
-            placeholderSource: 'comment',
-          }),
-        )
-      : undefined;
-
-    return {
-      id: String(comment.ID ?? comment.Id ?? ''),
-      author: comment.Author,
-      color: comment.Color,
-      isFootnote: parseYesNoFlag(comment.Footnote),
-      number: parseOptionalNumber(comment.Number),
-      collapsed: parseYesNoFlag(comment.Collapsed),
-      rawRtf,
-      text: parsed?.plainText,
-      textWordCount: parsed?.textWordCount,
-      textCharCount: parsed?.textCharCount,
-      paragraphs: parsed?.paragraphs?.length ? parsed.paragraphs : undefined,
-      runs: parsed?.runs?.length ? parsed.runs : undefined,
-      placeholders: parsed?.placeholders,
-      embeddedImages: parsed?.embeddedImages,
-      embeddedPdfs: parsed?.embeddedPdfs,
-      inlineAnnotations: parsed?.inlineAnnotations,
-      linkedImages: parsed?.linkedImages,
-      hyperlinks: parsed?.hyperlinks,
-      bookmarks: parsed?.bookmarks,
-      fields: parsed?.fields,
-      commentAnchors: parsed?.commentAnchors,
-      footnotes: parsed?.footnotes,
-      lists: parsed?.lists,
-      assets: parsed?.assets,
-      rtfModel: parsed?.rtfModel,
-      tables: parsed?.tables,
-    };
+  const commentsNode = xml?.Comments ?? xml?.comments ?? xml;
+  return parseScrivenerCommentNodes(commentsNode, options, {
+    path: context.path,
+    documentId: context.documentId,
   });
-}
-
-function linkCommentAnchors(document: ScrivenerDocumentContent): void {
-  if (!document.comments?.length) {
-    return;
-  }
-  if (!document.commentAnchors?.length) {
-    document.comments = document.comments.map((comment) => ({
-      ...comment,
-      hasAnchors: false,
-    }));
-    return;
-  }
-
-  const commentIndexById = new Map(
-    document.comments.map((comment, index) => [comment.id, index] as const),
-  );
-  const anchorFieldIndexesByComment = new Map<number, number[]>();
-
-  document.commentAnchors = document.commentAnchors.map((anchor) => {
-    const commentIndex = commentIndexById.get(anchor.commentId);
-    if (commentIndex === undefined) {
-      return anchor;
-    }
-    const fieldIndexes = anchorFieldIndexesByComment.get(commentIndex) ?? [];
-    fieldIndexes.push(anchor.fieldIndex);
-    anchorFieldIndexesByComment.set(commentIndex, fieldIndexes);
-    return {
-      ...anchor,
-      commentIndex,
-    };
-  });
-
-  document.comments = document.comments.map((comment, index) => {
-    const anchorFieldIndexes = anchorFieldIndexesByComment.get(index);
-    if (!anchorFieldIndexes?.length) {
-      return {
-        ...comment,
-        hasAnchors: false,
-      };
-    }
-    return {
-      ...comment,
-      anchorFieldIndexes,
-      hasAnchors: true,
-    };
-  });
-
-  if (document.rtfModel?.commentAnchors) {
-    document.rtfModel = {
-      ...document.rtfModel,
-      commentAnchors: document.commentAnchors,
-    };
-  }
 }
 
 function parseStyleIds(raw?: string): string[] {
