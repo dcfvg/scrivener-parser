@@ -537,11 +537,10 @@ function parseScrivenerCharacterDirectiveSpans(
     SCRIVENER_DIRECTIVE_PREFIX_RE.lastIndex = cursor;
     const directiveMatch = SCRIVENER_DIRECTIVE_PREFIX_RE.exec(plainText);
     if (directiveMatch && directiveMatch.index === cursor && isInternalScrivenerDirective(directiveMatch[0])) {
-      flush(cursor);
-
       SCR_CS_DIRECTIVE_PREFIX_RE.lastIndex = cursor;
       const charMatch = SCR_CS_DIRECTIVE_PREFIX_RE.exec(plainText);
       if (charMatch && charMatch.index === cursor) {
+        flush(cursor);
         if (charMatch[1] === '!') {
           if (styleStack.length) {
             styleStack.pop();
@@ -552,8 +551,11 @@ function parseScrivenerCharacterDirectiveSpans(
             styleStack.push(resolved);
           }
         }
+        cursor = SCRIVENER_DIRECTIVE_PREFIX_RE.lastIndex;
+        continue;
       }
 
+      flush(cursor);
       cursor = SCRIVENER_DIRECTIVE_PREFIX_RE.lastIndex;
       continue;
     }
@@ -730,7 +732,10 @@ function resolveCharacterSpan(
     const canonicalName = canonicalRtfStyleName('character', current);
     const resolvedName = rtfStyleName ?? definitionName ?? canonicalName;
     return {
-      id: (rtfStyleName ? idByName?.get(rtfStyleName) : undefined) ?? rtfStyleName ?? canonicalName,
+      id: (rtfStyleName ? idByName?.get(rtfStyleName) : undefined)
+        ?? (definitionName ? current : undefined)
+        ?? rtfStyleName
+        ?? canonicalName,
       name: resolvedName,
     };
   }
@@ -777,6 +782,7 @@ function parseCharacterStyleSpans(
   styleMap: Map<string, string>,
   plainText: string | undefined,
   definitions?: ScrivenerStyleDefinition[],
+  styleIds?: string[],
 ): ScrivenerStyleSpan[] {
   const spans: ScrivenerStyleSpan[] = [];
   const nameMap = new Map((definitions ?? []).map((def) => [String(def.id ?? def.name ?? ''), def.name ?? String(def.id ?? '')]));
@@ -805,6 +811,7 @@ function parseCharacterStyleSpans(
   let directUnderline = false;
   const annotState = createScrivenerAnnotationState();
   let rawText = '';
+  const scrivenerCharacterStyleStack: Array<string | undefined> = [];
 
   const emitCharacterText = (value: string, current: string | undefined) => {
     if (!value) return;
@@ -833,6 +840,61 @@ function parseCharacterStyleSpans(
       start,
       end: pos.index,
     });
+  };
+
+  const emitTextWithFootnoteTokens = (value: string) => {
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    SCRIVENER_FOOTNOTE_TOKEN_RE.lastIndex = 0;
+    while ((match = SCRIVENER_FOOTNOTE_TOKEN_RE.exec(value)) !== null) {
+      if (match.index > cursor) {
+        emitCharacterText(value.slice(cursor, match.index), currentCharStyle);
+      }
+      emitCharacterText(match[0], undefined);
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < value.length) {
+      emitCharacterText(value.slice(cursor), currentCharStyle);
+    }
+  };
+
+  const applyScrivenerCharacterDirective = (directive: string): boolean => {
+    const charMatch = /^<(!?)\$Scr_Cs::([^>]+)>$/.exec(directive);
+    if (!charMatch) return false;
+    if (charMatch[1] === '!') {
+      currentCharStyle = scrivenerCharacterStyleStack.pop();
+    } else {
+      const resolved = resolveScrivenerCharacterStyle(charMatch[2], styleIds, definitions);
+      scrivenerCharacterStyleStack.push(currentCharStyle);
+      if (resolved) {
+        currentCharStyle = resolved.id;
+      }
+    }
+    return true;
+  };
+
+  const emitTextWithScrivenerDirectives = (value: string) => {
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    const directiveRe = /<!?\$[^>\n]+>/g;
+    while ((match = directiveRe.exec(value)) !== null) {
+      if (match.index > cursor) {
+        emitTextWithFootnoteTokens(value.slice(cursor, match.index));
+      }
+      if (applyScrivenerCharacterDirective(match[0])) {
+        cursor = match.index + match[0].length;
+        continue;
+      }
+      if (isInternalScrivenerDirective(match[0])) {
+        emitCharacterText(match[0], undefined);
+      } else {
+        emitTextWithFootnoteTokens(match[0]);
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < value.length) {
+      emitTextWithFootnoteTokens(value.slice(cursor));
+    }
   };
 
   for (const token of tokens) {
@@ -964,30 +1026,20 @@ function parseCharacterStyleSpans(
         skipAscii = 0;
       }
 
-      let cursor = 0;
-      let match: RegExpExecArray | null;
-      SCRIVENER_FOOTNOTE_TOKEN_RE.lastIndex = 0;
-      while ((match = SCRIVENER_FOOTNOTE_TOKEN_RE.exec(value)) !== null) {
-        if (match.index > cursor) {
-          emitCharacterText(value.slice(cursor, match.index), currentCharStyle);
-        }
-        emitCharacterText(match[0], undefined);
-        cursor = match.index + match[0].length;
-      }
-      if (cursor < value.length) {
-        emitCharacterText(value.slice(cursor), currentCharStyle);
-      }
+      emitTextWithScrivenerDirectives(value);
     }
   }
 
   const { text: normalizedText, mapOffset } = buildNormalizedOffsetMapper(rawText);
   const targetLength = plainText?.length ?? normalizedText.length;
+  const baseOffset = normalizedText && plainText ? plainText.indexOf(normalizedText) : 0;
+  const normalizedBaseOffset = baseOffset >= 0 ? baseOffset : 0;
 
   return spans
     .map((span) => ({
       ...span,
-      start: Math.min(mapOffset(span.start), targetLength),
-      end: Math.min(mapOffset(span.end), targetLength),
+      start: Math.min(normalizedBaseOffset + mapOffset(span.start), targetLength),
+      end: Math.min(normalizedBaseOffset + mapOffset(span.end), targetLength),
     }))
     .filter((span) => span.end > span.start);
 }
@@ -1056,6 +1108,7 @@ export function extractStyleSpans(
       styleMap,
       plainText,
       definitions,
+      styleIds,
     ),
     ...parseScrivenerCharacterDirectiveSpans(
       plainText,

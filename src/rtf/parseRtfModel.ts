@@ -54,6 +54,7 @@ const DESTINATION_WORDS = new Set([
 ]);
 
 const INTERNAL_SCRIVENER_MARKUP_RE = /(?:<!?\$Scr(?!vFn:)[^>\n]+>|\{?\$SCRImageLink\[[^\]]*]=[^}\n]+}?)/g;
+const SCRIVENER_CHARACTER_STYLE_DIRECTIVE_RE = /<!?\$Scr_Cs::[^>\n]+>/g;
 
 interface InternalParagraph {
   runs: ScrivenerTextRun[];
@@ -944,7 +945,7 @@ function parsePreprocessedRtfModel(
         value = value.slice(skipAscii);
         skipAscii = 0;
       }
-      appendVisible(value);
+      appendVisible(value.replace(SCRIVENER_CHARACTER_STYLE_DIRECTIVE_RE, ''));
     }
   }
 

@@ -147,7 +147,7 @@ test('loads notes.styles and derives note style spans', () => {
 
   assert.equal(document.notesStyleIds?.[0], 'STYLE-NOTE');
   assert.equal(document.notesStyleRefs?.[0]?.name, 'Note emphasis');
-  assert.equal(document.notesPlain, '<$Scr_Cs::0>Note styled<!$Scr_Cs::0> end');
+  assert.equal(document.notesPlain, 'Note styled end');
   assert.deepEqual(
     document.notesStyleSpans
       ?.filter((span) => span.kind === 'character')
