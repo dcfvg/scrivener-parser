@@ -233,6 +233,8 @@ test('links snapshot comments to scrivcmt field anchors in snapshot RTF', () => 
   assert.equal(snapshot?.commentAnchors?.length, 1);
   assert.equal(snapshot?.commentAnchors?.[0]?.commentId, 'COMMENT-1');
   assert.equal(snapshot?.commentAnchors?.[0]?.commentIndex, 0);
+  assert.equal(snapshot?.commentAnchors?.[0]?.textStart, 5);
+  assert.equal(snapshot?.commentAnchors?.[0]?.textEnd, 8);
   assert.equal(snapshot?.rtfModel?.commentAnchors?.[0]?.commentIndex, 0);
   assert.equal(snapshot?.comments?.[0]?.hasAnchors, true);
   assert.deepEqual(snapshot?.comments?.[0]?.anchorFieldIndexes, [0]);

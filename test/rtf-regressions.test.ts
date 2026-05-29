@@ -50,6 +50,17 @@ test('extracts Scrivener comment anchors from hyperlink fields', () => {
       'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB',
     ],
   );
+  assert.deepEqual(
+    extras.commentAnchors.map((anchor) => ({
+      textStart: anchor.textStart,
+      textEnd: anchor.textEnd,
+      text: extras.plainText.slice(anchor.textStart, anchor.textEnd),
+    })),
+    [
+      { textStart: 14, textEnd: 17, text: '[A]' },
+      { textStart: 39, textEnd: 42, text: '[B]' },
+    ],
+  );
   assert.ok(extras.fields.every((field) => field.kind === 'comment-anchor'));
   assert.equal(extras.plainText, 'Neutral block [A] neutral continuation [B] end.');
 });
@@ -563,6 +574,40 @@ test('captures direct underline runs and combines them with bold and italic', ()
       end: 15,
     },
   ]);
+});
+
+test('keeps direct style offsets aligned when visible text normalizes Scrivener image wrappers', () => {
+  const rtf = String.raw`{\rtf1\ansi \{$SCRImageLink[w:1;h:1]=/tmp/a.jpg\}\
+Text before un vocabulaire ve\i nu des u\i rban pr\i0 actices}`;
+  const plainText = rtfToText(rtf).replace(/[{}]/g, '');
+  const italicSpan = extractStyleSpans(rtf, plainText, []).find(
+    (span) => span.kind === 'character' && span.id === 'rtf-italic',
+  );
+  const expectedText = 'nu des urban pr';
+
+  assert.deepEqual(italicSpan, {
+    id: 'rtf-italic',
+    name: 'rtf-italic',
+    kind: 'character',
+    start: plainText.indexOf(expectedText),
+    end: plainText.indexOf(expectedText) + expectedText.length,
+  });
+});
+
+test('does not realign a character span to a distant global text occurrence', () => {
+  const rtf = '{\\rtf1\\ansi \\i a\\i0 b}';
+  const plainText = `${'x'.repeat(120)}a`;
+  const italicSpan = extractStyleSpans(rtf, plainText, []).find(
+    (span) => span.kind === 'character' && span.id === 'rtf-italic',
+  );
+
+  assert.deepEqual(italicSpan, {
+    id: 'rtf-italic',
+    name: 'rtf-italic',
+    kind: 'character',
+    start: 0,
+    end: 1,
+  });
 });
 
 test('normalizes RTF underline variants and ignores underline color controls', () => {

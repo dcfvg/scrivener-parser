@@ -236,6 +236,8 @@ export interface ScrivenerCommentAnchor {
   commentId: string;
   fieldIndex: number;
   text?: string;
+  textStart?: number;
+  textEnd?: number;
   commentIndex?: number;
 }
 

@@ -65,6 +65,8 @@ interface InternalParagraph {
 interface FieldScratch {
   instructionRaw?: string;
   resultRaw?: string;
+  resultStart?: number;
+  resultEnd?: number;
 }
 
 interface PdfScratch {
@@ -671,6 +673,7 @@ function parsePreprocessedRtfModel(
   const embeddedPdfs: ScrivenerEmbeddedPdf[] = [];
   let uc = 1;
   let skipAscii = 0;
+  let visibleOffset = 0;
   const shouldExtractEmbeddedImages = options.extractEmbeddedImages !== false;
   const shouldExtractEmbeddedPdfs = options.extractEmbeddedPdfs !== false;
 
@@ -679,10 +682,12 @@ function parsePreprocessedRtfModel(
       return;
     }
     pushTextRun(paragraphs[paragraphs.length - 1], value, source);
+    visibleOffset += value.length;
   };
 
   const pushParagraphBreak = () => {
     paragraphs.push(createParagraph());
+    visibleOffset += 1;
   };
 
   const markNextParagraphPageBreak = () => {
@@ -729,6 +734,7 @@ function parsePreprocessedRtfModel(
         const field = findNearestField(groupStack);
         if (field?.field) {
           field.field.resultRaw = readRaw();
+          field.field.resultEnd = visibleOffset;
         }
       } else if (group.destination === 'pdffilename') {
         const pdf = findNearestPdf(groupStack);
@@ -754,6 +760,8 @@ function parsePreprocessedRtfModel(
             commentId: meta.commentId,
             fieldIndex,
             text: result,
+            textStart: group.field?.resultStart,
+            textEnd: group.field?.resultEnd,
           });
         }
       } else if (group.destination === 'Scrv_fn') {
@@ -831,6 +839,12 @@ function parsePreprocessedRtfModel(
         }
         if (token.word === 'field') {
           current.field = {};
+        }
+        if (token.word === 'fldrslt') {
+          const field = findNearestField(groupStack);
+          if (field?.field) {
+            field.field.resultStart = visibleOffset;
+          }
         }
         if (token.word === 'scrivenerpdf') {
           current.pdf = {};

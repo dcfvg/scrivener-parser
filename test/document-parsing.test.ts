@@ -72,6 +72,8 @@ test('links comment anchors to parsed comments without circular references', () 
   assert.equal(document.commentAnchors?.length, 1);
   assert.equal(document.commentAnchors?.[0]?.commentId, 'COMMENT-1');
   assert.equal(document.commentAnchors?.[0]?.commentIndex, 0);
+  assert.equal(document.commentAnchors?.[0]?.textStart, 7);
+  assert.equal(document.commentAnchors?.[0]?.textEnd, 10);
   assert.deepEqual(document.comments?.[0]?.anchorFieldIndexes, [0]);
   assert.equal(document.comments?.[0]?.number, 3);
   assert.equal(document.comments?.[0]?.collapsed, true);

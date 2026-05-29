@@ -311,6 +311,49 @@ function buildNormalizedOffsetMapper(rawText: string): {
   };
 }
 
+function findClosestTextRange(
+  text: string | undefined,
+  needle: string,
+  approximateStart: number,
+  approximateEnd: number,
+): { start: number; end: number } | undefined {
+  if (!text || !needle) return undefined;
+
+  const start = Math.max(0, Math.min(text.length, approximateStart));
+  const end = Math.max(start, Math.min(text.length, approximateEnd));
+  if (text.slice(start, end) === needle) {
+    return { start, end };
+  }
+
+  const toleratedDistance = Math.max(24, needle.length * 4);
+  const searchStart = Math.max(0, start - toleratedDistance);
+  const searchEnd = Math.min(text.length, end + toleratedDistance);
+  let best: { start: number; end: number; distance: number } | undefined;
+  let cursor = searchStart;
+  while (cursor <= searchEnd) {
+    const start = text.indexOf(needle, cursor);
+    if (start === -1 || start + needle.length > searchEnd) break;
+    const distance = Math.abs(start - approximateStart);
+    if (!best || distance < best.distance) {
+      best = {
+        start,
+        end: start + needle.length,
+        distance,
+      };
+    }
+    cursor = start + Math.max(1, needle.length);
+  }
+
+  if (!best) return undefined;
+  if (best.distance <= toleratedDistance) {
+    return {
+      start: best.start,
+      end: best.end,
+    };
+  }
+  return undefined;
+}
+
 function parseLeadingScrivenerParagraphDirectives(
   text: string,
   styleIds: string[] | undefined,
@@ -1036,11 +1079,19 @@ function parseCharacterStyleSpans(
   const normalizedBaseOffset = baseOffset >= 0 ? baseOffset : 0;
 
   return spans
-    .map((span) => ({
-      ...span,
-      start: Math.min(normalizedBaseOffset + mapOffset(span.start), targetLength),
-      end: Math.min(normalizedBaseOffset + mapOffset(span.end), targetLength),
-    }))
+    .map((span) => {
+      const normalizedStart = mapOffset(span.start);
+      const normalizedEnd = mapOffset(span.end);
+      const start = Math.min(normalizedBaseOffset + normalizedStart, targetLength);
+      const end = Math.min(normalizedBaseOffset + normalizedEnd, targetLength);
+      const styledText = normalizedText.slice(normalizedStart, normalizedEnd);
+      const aligned = findClosestTextRange(plainText, styledText, start, end);
+      return {
+        ...span,
+        start: aligned?.start ?? start,
+        end: aligned?.end ?? end,
+      };
+    })
     .filter((span) => span.end > span.start);
 }
 
