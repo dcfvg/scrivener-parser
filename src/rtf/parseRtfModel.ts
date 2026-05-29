@@ -62,11 +62,18 @@ interface InternalParagraph {
   pageBreakBefore?: boolean;
 }
 
+interface ParagraphOffset {
+  paragraphIndex: number;
+  offset: number;
+}
+
 interface FieldScratch {
   instructionRaw?: string;
   resultRaw?: string;
   resultStart?: number;
   resultEnd?: number;
+  resultStartLocation?: ParagraphOffset;
+  resultEndLocation?: ParagraphOffset;
 }
 
 interface PdfScratch {
@@ -78,6 +85,11 @@ interface PreprocessedRtf {
   footnotes: ScrivenerFootnote[];
   annotations: ScrivenerInlineAnnotation[];
 }
+
+type InternalCommentAnchor = ScrivenerCommentAnchor & {
+  textStartLocation?: ParagraphOffset;
+  textEndLocation?: ParagraphOffset;
+};
 
 interface GroupState {
   start: number;
@@ -161,32 +173,56 @@ function paragraphHasText(paragraph: InternalParagraph): boolean {
 
 function normalizeParagraphs(
   paragraphs: InternalParagraph[],
-): { paragraphs: ScrivenerParagraph[]; runs: ScrivenerTextRun[]; lists: ScrivenerRtfList[]; plainText: string } {
-  const trimmed = paragraphs.map((paragraph) => trimParagraph(paragraph));
-  while (trimmed.length && !paragraphHasText(trimmed[0])) {
+): {
+  paragraphs: ScrivenerParagraph[];
+  runs: ScrivenerTextRun[];
+  lists: ScrivenerRtfList[];
+  plainText: string;
+  mapOffset: (location: ParagraphOffset) => number | undefined;
+} {
+  const trimmed = paragraphs.map((paragraph, originalIndex) => ({
+    paragraph: trimParagraph(paragraph),
+    originalIndex,
+  }));
+  const removedOffsets = new Map<number, number>();
+  while (trimmed.length && !paragraphHasText(trimmed[0].paragraph)) {
     const removed = trimmed.shift();
-    if (removed?.pageBreakBefore && trimmed[0]) {
-      trimmed[0].pageBreakBefore = true;
+    if (removed) {
+      removedOffsets.set(removed.originalIndex, 0);
+    }
+    if (removed?.paragraph.pageBreakBefore && trimmed[0]) {
+      trimmed[0].paragraph.pageBreakBefore = true;
     }
   }
-  while (trimmed.length && !paragraphHasText(trimmed[trimmed.length - 1])) {
-    trimmed.pop();
+  while (trimmed.length && !paragraphHasText(trimmed[trimmed.length - 1].paragraph)) {
+    const removed = trimmed.pop();
+    if (removed) {
+      removedOffsets.set(removed.originalIndex, Number.POSITIVE_INFINITY);
+    }
   }
 
-  const collapsed: InternalParagraph[] = [];
+  const collapsed: Array<{
+    paragraph: InternalParagraph;
+    originalIndex: number;
+  }> = [];
   let pendingPageBreakBefore = false;
-  for (const paragraph of trimmed) {
+  for (const entry of trimmed) {
+    const paragraph = entry.paragraph;
     if (paragraph.pageBreakBefore) {
       pendingPageBreakBefore = true;
     }
     const isEmpty = !paragraphHasText(paragraph);
     const previous = collapsed[collapsed.length - 1];
-    if (isEmpty && previous && !paragraphText(previous)) {
+    if (isEmpty && previous && !paragraphText(previous.paragraph)) {
+      removedOffsets.set(entry.originalIndex, 0);
       continue;
     }
     collapsed.push({
-      ...paragraph,
-      pageBreakBefore: pendingPageBreakBefore || paragraph.pageBreakBefore,
+      ...entry,
+      paragraph: {
+        ...paragraph,
+        pageBreakBefore: pendingPageBreakBefore || paragraph.pageBreakBefore,
+      },
     });
     if (!isEmpty) {
       pendingPageBreakBefore = false;
@@ -196,9 +232,17 @@ function normalizeParagraphs(
   const normalizedParagraphs: ScrivenerParagraph[] = [];
   const runs: ScrivenerTextRun[] = [];
   const lists: ScrivenerRtfList[] = [];
-  for (const paragraph of collapsed) {
+  const offsetMap = new Map<number, { start: number; length: number }>();
+  let globalOffset = 0;
+  for (const entry of collapsed) {
+    const paragraph = entry.paragraph;
+    const text = paragraphText(paragraph);
+    offsetMap.set(entry.originalIndex, {
+      start: globalOffset,
+      length: text.length,
+    });
     const outputParagraph: ScrivenerParagraph = {
-      text: paragraphText(paragraph),
+      text,
       runs: paragraph.runs.map((run) => ({ ...run })),
     };
     const directiveState = extractLeadingScrivenerParagraphDirectiveState(outputParagraph.text);
@@ -219,13 +263,30 @@ function normalizeParagraphs(
     }
     normalizedParagraphs.push(outputParagraph);
     runs.push(...outputParagraph.runs);
+    globalOffset += text.length;
+    if (entry !== collapsed[collapsed.length - 1]) {
+      globalOffset += 1;
+    }
   }
 
+  const plainText = normalizedParagraphs.map((paragraph) => paragraph.text).join('\n');
   return {
     paragraphs: normalizedParagraphs,
     runs,
     lists,
-    plainText: normalizedParagraphs.map((paragraph) => paragraph.text).join('\n'),
+    plainText,
+    mapOffset: (location: ParagraphOffset) => {
+      const mapped = offsetMap.get(location.paragraphIndex);
+      if (mapped) {
+        const local = Math.max(0, Math.min(mapped.length, location.offset));
+        return mapped.start + local;
+      }
+      const removed = removedOffsets.get(location.paragraphIndex);
+      if (removed === Number.POSITIVE_INFINITY) {
+        return plainText.length;
+      }
+      return removed;
+    },
   };
 }
 
@@ -666,7 +727,7 @@ function parsePreprocessedRtfModel(
   const paragraphs: InternalParagraph[] = [createParagraph()];
   const groupStack: GroupState[] = [];
   const fields: ScrivenerField[] = [];
-  const commentAnchors: ScrivenerCommentAnchor[] = [];
+  const commentAnchors: InternalCommentAnchor[] = [];
   const footnotes: ScrivenerFootnote[] = [...preprocessed.footnotes];
   const annotations: ScrivenerInlineAnnotation[] = [...preprocessed.annotations];
   const embeddedImages: ScrivenerEmbeddedImage[] = [];
@@ -676,6 +737,11 @@ function parsePreprocessedRtfModel(
   let visibleOffset = 0;
   const shouldExtractEmbeddedImages = options.extractEmbeddedImages !== false;
   const shouldExtractEmbeddedPdfs = options.extractEmbeddedPdfs !== false;
+
+  const currentParagraphOffset = (): ParagraphOffset => ({
+    paragraphIndex: Math.max(0, paragraphs.length - 1),
+    offset: paragraphText(paragraphs[paragraphs.length - 1]).length,
+  });
 
   const appendVisible = (value: string, source = currentVisibleSource(groupStack)) => {
     if (!value) {
@@ -735,6 +801,7 @@ function parsePreprocessedRtfModel(
         if (field?.field) {
           field.field.resultRaw = readRaw();
           field.field.resultEnd = visibleOffset;
+          field.field.resultEndLocation = currentParagraphOffset();
         }
       } else if (group.destination === 'pdffilename') {
         const pdf = findNearestPdf(groupStack);
@@ -762,6 +829,8 @@ function parsePreprocessedRtfModel(
             text: result,
             textStart: group.field?.resultStart,
             textEnd: group.field?.resultEnd,
+            textStartLocation: group.field?.resultStartLocation,
+            textEndLocation: group.field?.resultEndLocation,
           });
         }
       } else if (group.destination === 'Scrv_fn') {
@@ -844,6 +913,7 @@ function parsePreprocessedRtfModel(
           const field = findNearestField(groupStack);
           if (field?.field) {
             field.field.resultStart = visibleOffset;
+            field.field.resultStartLocation = currentParagraphOffset();
           }
         }
         if (token.word === 'scrivenerpdf') {
@@ -964,14 +1034,30 @@ function parsePreprocessedRtfModel(
   }
 
   const normalized = normalizeParagraphs(paragraphs);
+  const normalizedCommentAnchors = commentAnchors.map((anchor): ScrivenerCommentAnchor => {
+    const textStart = anchor.textStartLocation
+      ? normalized.mapOffset(anchor.textStartLocation)
+      : anchor.textStart;
+    const textEnd = anchor.textEndLocation
+      ? normalized.mapOffset(anchor.textEndLocation)
+      : anchor.textEnd;
+    return {
+      commentId: anchor.commentId,
+      fieldIndex: anchor.fieldIndex,
+      text: anchor.text,
+      textStart,
+      textEnd,
+      commentIndex: anchor.commentIndex,
+    };
+  });
   const linkedImages = extractParagraphLinkedImages(normalized.paragraphs);
   return {
-    plainText: normalized.plainText.trim(),
+    plainText: normalized.plainText,
     paragraphs: normalized.paragraphs,
     runs: normalized.runs,
     properties,
     fields,
-    commentAnchors,
+    commentAnchors: normalizedCommentAnchors,
     footnotes,
     annotations,
     linkedImages,

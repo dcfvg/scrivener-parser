@@ -65,6 +65,22 @@ test('extracts Scrivener comment anchors from hyperlink fields', () => {
   assert.equal(extras.plainText, 'Neutral block [A] neutral continuation [B] end.');
 });
 
+test('keeps comment anchor offsets aligned after paragraph normalization', () => {
+  const rtf = String.raw`{\rtf1\ansi\pard\par
+\pard   Prefix {\field{\*\fldinst{HYPERLINK "scrivcmt://COMMENT-TRIMMED"}}{\fldrslt mark}} suffix.\par
+\pard\par}`;
+
+  const extras = extractRtfExtras(rtf);
+  const anchor = extras.commentAnchors[0];
+  const expectedStart = extras.plainText.indexOf('mark');
+
+  assert.equal(extras.plainText, '  Prefix mark suffix.');
+  assert.equal(anchor.commentId, 'COMMENT-TRIMMED');
+  assert.equal(anchor.textStart, expectedStart);
+  assert.equal(anchor.textEnd, expectedStart + 'mark'.length);
+  assert.equal(extras.plainText.slice(anchor.textStart, anchor.textEnd), 'mark');
+});
+
 test('public API exposes byte-aware RTF helpers', () => {
   const bytes = asciiBytes(String.raw`{\rtf1\ansi\ansicpg1252 Caf\'e9}`);
 
