@@ -702,22 +702,25 @@ function stripIgnoredRtfLineBreaks(value: string): string {
   return String(value ?? '').replace(/[\r\n]+/g, '');
 }
 
-type DirectCharacterFormatPart = 'bold' | 'italic' | 'underline';
+type DirectCharacterFormatPart = 'bold' | 'italic' | 'underline' | 'small-caps';
 
 const DIRECT_CHARACTER_FORMAT_ORDER: Array<[DirectCharacterFormatPart, (state: {
   directBold: boolean;
   directItalic: boolean;
   directUnderline: boolean;
+  directSmallCaps: boolean;
 }) => boolean]> = [
   ['bold', (state) => state.directBold],
   ['italic', (state) => state.directItalic],
   ['underline', (state) => state.directUnderline],
+  ['small-caps', (state) => state.directSmallCaps],
 ];
 
 function buildDirectRtfCharacterStyleName(state: {
   directBold: boolean;
   directItalic: boolean;
   directUnderline: boolean;
+  directSmallCaps: boolean;
 }): string | undefined {
   const parts = DIRECT_CHARACTER_FORMAT_ORDER
     .filter(([, isEnabled]) => isEnabled(state))
@@ -765,6 +768,7 @@ function resolveCharacterSpan(
   directItalic: boolean,
   directBold: boolean,
   directUnderline: boolean,
+  directSmallCaps: boolean,
   nameMap?: Map<string, string>,
   idByName?: Map<string, string>,
   styleMap?: Map<string, string>,
@@ -786,6 +790,7 @@ function resolveCharacterSpan(
     directBold,
     directItalic,
     directUnderline,
+    directSmallCaps,
   });
   if (name) {
     return { id: name, name };
@@ -840,6 +845,7 @@ function parseCharacterStyleSpans(
     directItalic: boolean;
     directBold: boolean;
     directUnderline: boolean;
+    directSmallCaps: boolean;
     uc: number;
     skipAscii: number;
     ignore: boolean;
@@ -852,6 +858,7 @@ function parseCharacterStyleSpans(
   let directItalic = false;
   let directBold = false;
   let directUnderline = false;
+  let directSmallCaps = false;
   const annotState = createScrivenerAnnotationState();
   let rawText = '';
   const scrivenerCharacterStyleStack: Array<string | undefined> = [];
@@ -866,6 +873,7 @@ function parseCharacterStyleSpans(
       directItalic,
       directBold,
       directUnderline,
+      directSmallCaps,
       nameMap,
       idByName,
       styleMap,
@@ -948,6 +956,7 @@ function parseCharacterStyleSpans(
         directItalic,
         directBold,
         directUnderline,
+        directSmallCaps,
         uc,
         skipAscii,
         ignore: parent?.ignore ?? false,
@@ -963,6 +972,7 @@ function parseCharacterStyleSpans(
         directItalic = previous.directItalic;
         directBold = previous.directBold;
         directUnderline = previous.directUnderline;
+        directSmallCaps = previous.directSmallCaps;
         uc = previous.uc;
         skipAscii = previous.skipAscii;
       }
@@ -997,6 +1007,7 @@ function parseCharacterStyleSpans(
         directItalic = false;
         directBold = false;
         directUnderline = false;
+        directSmallCaps = false;
         continue;
       }
       if (token.word === 'cs' && token.param) {
@@ -1014,6 +1025,10 @@ function parseCharacterStyleSpans(
       const underlineState = resolveUnderlineControlWord(token.word, token.param);
       if (underlineState !== undefined) {
         directUnderline = underlineState;
+        continue;
+      }
+      if (token.word === 'scaps') {
+        directSmallCaps = token.param !== '0';
         continue;
       }
       if (token.word === 'uc' && token.param !== undefined) {

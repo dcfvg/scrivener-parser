@@ -592,6 +592,30 @@ test('captures direct underline runs and combines them with bold and italic', ()
   ]);
 });
 
+test('captures direct small caps runs and combines them with useful direct styles', () => {
+  const rtf = '{\\rtf1\\ansi A \\scaps nom propre\\scaps0  puis \\b\\scaps fort\\scaps0\\b0 .}';
+  const plainText = rtfToText(rtf);
+  const spans = extractStyleSpans(rtf, plainText, []).filter((span) => span.kind === 'character');
+
+  assert.equal(plainText, 'A nom propre puis fort.');
+  assert.deepEqual(spans, [
+    {
+      id: 'rtf-small-caps',
+      name: 'rtf-small-caps',
+      kind: 'character',
+      start: 2,
+      end: 12,
+    },
+    {
+      id: 'rtf-bold-small-caps',
+      name: 'rtf-bold-small-caps',
+      kind: 'character',
+      start: 18,
+      end: 22,
+    },
+  ]);
+});
+
 test('keeps direct style offsets aligned when visible text normalizes Scrivener image wrappers', () => {
   const rtf = String.raw`{\rtf1\ansi \{$SCRImageLink[w:1;h:1]=/tmp/a.jpg\}\
 Text before un vocabulaire ve\i nu des u\i rban pr\i0 actices}`;
