@@ -5,7 +5,11 @@ import { loadDirectoryAsArchive } from '../src/archive/node.js';
 async function main() {
   const root = path.resolve(process.argv[2] ?? 'sample/example.scriv');
   const archive = await loadDirectoryAsArchive(root);
-  const project = parseScrivenerProject(archive, { includeBinaryAssets: false });
+  const project = parseScrivenerProject(archive, {
+    decodeRtf: true,
+    loadSnapshots: true,
+    includeBinaryAssets: false,
+  });
   console.log('Project:', project.info.title ?? project.info.identifier);
   console.log('Binder roots:', project.binder.length);
   console.log('Documents parsed:', Object.keys(project.documents).length);

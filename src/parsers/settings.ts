@@ -28,7 +28,7 @@ import type {
 } from '../types.js';
 import { toArray, asNumber } from '../utils/collections.js';
 import { yesNo } from '../utils/strings.js';
-import { parseXml } from '../utils/xml.js';
+import { parseXml, readXmlNodeText as readNodeText } from '../utils/xml.js';
 import { extractPlaceholders } from '../rtf/extractPlaceholders.js';
 import { rtfToText } from '../rtf/rtfToText.js';
 import {
@@ -108,23 +108,6 @@ function readRecents(archive: ScrivenerArchive, path: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-function readNodeText(node: unknown): string | undefined {
-  if (node === undefined || node === null) {
-    return undefined;
-  }
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
-    return String(node);
-  }
-  if (typeof node === 'object') {
-    const record = node as Record<string, unknown>;
-    const text = record['#text'] ?? record._cdata ?? record.CDATA;
-    if (typeof text === 'string' || typeof text === 'number' || typeof text === 'boolean') {
-      return String(text);
-    }
-  }
-  return undefined;
 }
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
@@ -319,7 +302,7 @@ function parseCompileLayout(node: any): ScrivenerCompileLayout | undefined {
     name,
     include: hasInclude ? include : undefined,
     includeTitles: include.titles,
-    rtfBookmark: yesNo(readNodeText(node?.RTFBookmark) ?? node?.RTFBookmark),
+    rtfBookmark: yesNo(node?.RTFBookmark),
     blankLineSeparator: node?.BlankLineSeparator
       ? {
           text: readNodeText(node.BlankLineSeparator),
@@ -537,21 +520,21 @@ function parseCompileSettings(
   const optionsNode = root?.ProjectSettings?.Options;
   const options = optionsNode
     ? {
-        removeComments: yesNo(readNodeText(optionsNode.RemoveComments)),
-        removeAnnotations: yesNo(readNodeText(optionsNode.RemoveAnnotations)),
+        removeComments: yesNo(optionsNode.RemoveComments),
+        removeAnnotations: yesNo(optionsNode.RemoveAnnotations),
         resampleImages: optionsNode.ResampleImages
           ? {
-              enabled: yesNo(readNodeText(optionsNode.ResampleImages) ?? optionsNode.ResampleImages),
+              enabled: yesNo(optionsNode.ResampleImages),
               dpi: asNumber(optionsNode.ResampleImages.DPI),
             }
           : undefined,
-        removeHighlights: yesNo(readNodeText(optionsNode.RemoveHighlights)),
-        removeTextColor: yesNo(readNodeText(optionsNode.RemoveTextColor)),
-        removeTrailingWhitespace: yesNo(readNodeText(optionsNode.RemoveTrailingWhitespace)),
-        convertTablesAndListToMMD: yesNo(readNodeText(optionsNode.ConvertTablesAndListToMMD)),
+        removeHighlights: yesNo(optionsNode.RemoveHighlights),
+        removeTextColor: yesNo(optionsNode.RemoveTextColor),
+        removeTrailingWhitespace: yesNo(optionsNode.RemoveTrailingWhitespace),
+        convertTablesAndListToMMD: yesNo(optionsNode.ConvertTablesAndListToMMD),
         reduceImageWidth: optionsNode.ReduceImageWidth
           ? {
-              enabled: yesNo(readNodeText(optionsNode.ReduceImageWidth) ?? optionsNode.ReduceImageWidth),
+              enabled: yesNo(optionsNode.ReduceImageWidth),
               dpi: asNumber(optionsNode.ReduceImageWidth.DPI),
             }
           : undefined,
@@ -577,14 +560,14 @@ function parseCompileSettings(
           : undefined,
         scriptwriting: optionsNode.Scriptwriting
           ? {
-              includeTitles: yesNo(readNodeText(optionsNode.Scriptwriting.IncludeTitles)),
-              includeSynopses: yesNo(readNodeText(optionsNode.Scriptwriting.IncludeSynopses)),
-              commentsAsScriptNotes: yesNo(readNodeText(optionsNode.Scriptwriting.CommentsAsScriptNotes)),
+              includeTitles: yesNo(optionsNode.Scriptwriting.IncludeTitles),
+              includeSynopses: yesNo(optionsNode.Scriptwriting.IncludeSynopses),
+              commentsAsScriptNotes: yesNo(optionsNode.Scriptwriting.CommentsAsScriptNotes),
             }
           : undefined,
         ebook: optionsNode.Ebook
           ? {
-              startAfterFrontMatter: yesNo(readNodeText(optionsNode.Ebook.StartAfterFrontMatter)),
+              startAfterFrontMatter: yesNo(optionsNode.Ebook.StartAfterFrontMatter),
               cover: optionsNode.Ebook.Cover
                 ? {
                     imageDocumentSource: optionsNode.Ebook.Cover.ImageDocument?.Source,
@@ -814,16 +797,16 @@ function parseProjectPreferences(raw: unknown): ScrivenerProjectPreferences | un
 
   const preferences: ScrivenerProjectPreferences = {
     version: readNodeText((root as any).Version) ?? (typeof (root as any).Version === 'string' ? (root as any).Version : undefined),
-    useProjectPreferences: yesNo(readNodeText((root as any).UseProjectPreferences)),
+    useProjectPreferences: yesNo((root as any).UseProjectPreferences),
     textFormat: parseCompileTextValue(textFormatRaw, { isRtf: true }),
-    useCustomFootnotesFont: yesNo(readNodeText((root as any).UseCustomFootnotesFont)),
+    useCustomFootnotesFont: yesNo((root as any).UseCustomFootnotesFont),
     footnotesFont: footnotesFontNode ? {
       name: readNodeText(footnotesFontNode),
       size: asNumber((footnotesFontNode as any)?.Size),
     } : undefined,
     footnoteMarker: footnoteMarkerNode ? {
       value: readNodeText(footnoteMarkerNode),
-      useMarker: yesNo(readNodeText((footnoteMarkerNode as any)?.UseMarker) ?? (typeof (footnoteMarkerNode as any)?.UseMarker === 'string' ? (footnoteMarkerNode as any).UseMarker : undefined)),
+      useMarker: yesNo((footnoteMarkerNode as any)?.UseMarker),
     } : undefined,
     raw: asStructuredObject(root),
   };

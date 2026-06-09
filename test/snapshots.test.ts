@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseSnapshots } from '../src/parsers/snapshots.js';
+import type { ScrivenerParserDiagnostic } from '../src/types.js';
 
 function asciiBytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
@@ -66,6 +67,31 @@ test('decodes snapshot RTF from bytes before parsing', () => {
   const snapshot = snapshots['DOC-2']?.[0];
   assert.equal(snapshot?.plainText, 'テスト');
   assert.equal(snapshot?.paragraphs?.[0].text, 'テスト');
+});
+
+test('records a diagnostic when snapshot RTF is matched by fallback order', () => {
+  const diagnostics: ScrivenerParserDiagnostic[] = [];
+  const archive = ScrivenerArchive.fromFileMap({
+    'Snapshots/DOC-FALLBACK.snapshots/index.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<Snapshots Version="1.0">
+  <Snapshot>
+    <Title>mismatched date</Title>
+    <Date>2025-01-09 12:00:00 +0100</Date>
+  </Snapshot>
+</Snapshots>`,
+    'Snapshots/DOC-FALLBACK.snapshots/2025-01-10-12-00-00+0100.rtf': String.raw`{\rtf1\ansi Fallback body}`,
+  });
+
+  const snapshots = parseSnapshots(archive, {
+    basePath: '',
+    decodeRtf: true,
+    diagnostics,
+  });
+
+  assert.equal(snapshots['DOC-FALLBACK']?.[0]?.plainText, 'Fallback body');
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0]?.code, 'snapshot_rtf_fallback_match');
+  assert.match(diagnostics[0]?.message ?? '', /matched .* by order/);
 });
 
 test('extracts snapshot style spans with snapshot StyleIDs before falling back to current content.styles', () => {

@@ -300,9 +300,10 @@ export function parseProject(
   const projectTree = parseXml<any>(archive.readText(scrivxPath));
   const projectNode = projectTree?.ScrivenerProject ?? projectTree;
 
-  const decodeRtf = options.decodeRtf !== false;
+  const decodeRtf = Boolean(options.decodeRtf);
   const includeBinaryAssets = Boolean(options.includeBinaryAssets);
-  const loadSnapshots = options.loadSnapshots !== false;
+  const loadSnapshots = Boolean(options.loadSnapshots);
+  const deriveDisplayTitles = Boolean(options.deriveDisplayTitles);
   const extractPlaceholders = Boolean(options.extractPlaceholders);
   const extractStyleIds = Boolean(options.extractStyleIds);
   const extractStyleSpans = Boolean(options.extractStyleSpans);
@@ -352,7 +353,9 @@ export function parseProject(
     styleDefinitions: resources.styles,
     ...diagnosticOptions,
   });
-  applyBinderDisplayTitles(binder, documents);
+  if (deriveDisplayTitles) {
+    applyBinderDisplayTitles(binder, documents);
+  }
   const snapshots = loadSnapshots ? parseSnapshots(archive, {
     basePath: rootPath,
     decodeRtf,

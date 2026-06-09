@@ -50,3 +50,23 @@ test('parses Files/user.lock into a structured lock descriptor', () => {
   assert.equal(resources.userLock?.projectPath, '/Projects/example.scriv');
   assert.equal(resources.userLock?.entries.app, 'Scrivener');
 });
+
+test('parses docs.checksum entries with equals signs in paths', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Files/Data/docs.checksum': [
+      'DOC=WITH=EQUALS/content.rtf=abc123',
+    ].join('\n'),
+  });
+
+  const resources = parseResources(archive, {
+    basePath: '',
+    includeBinaryAssets: false,
+  });
+
+  assert.deepEqual(resources.docsChecksum, [
+    {
+      path: 'DOC=WITH=EQUALS/content.rtf',
+      checksum: 'abc123',
+    },
+  ]);
+});

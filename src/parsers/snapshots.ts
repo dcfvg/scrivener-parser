@@ -1,16 +1,19 @@
 import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import type { ScrivenerComment, ScrivenerSnapshot, ScrivenerStyleDefinition } from '../types.js';
-import { parseXml } from '../utils/xml.js';
+import { parseXml, readXmlNodeText as readNodeText } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { rtfToText } from '../rtf/rtfToText.js';
 import { extractStyleSpans } from '../rtf/extractStyleSpans.js';
 import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
-import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
+import {
+  recordParserDiagnostic,
+  tryOptionalParse,
+  type ParserDiagnosticSink,
+} from '../utils/diagnostics.js';
 import { linkCommentAnchors } from './comment-anchors.js';
 import {
   hasScrivenerCommentNodes,
   parseScrivenerCommentNodes,
-  readNodeText,
 } from './comments.js';
 
 interface SnapshotOptions extends ParserDiagnosticSink {
@@ -312,6 +315,13 @@ export function parseSnapshots(
       if (!entry && fallbackIndex < rtfEntries.length) {
         entry = rtfEntries[fallbackIndex];
         fallbackIndex += 1;
+        recordParserDiagnostic(options, {
+          code: 'snapshot_rtf_fallback_match',
+          path: entry ? `${base}/${entry.file}` : base,
+          message: meta.date
+            ? `Snapshot metadata date "${meta.date}" did not match an RTF filename; matched ${entry.file} by order.`
+            : `Snapshot metadata without a date matched ${entry.file} by order.`,
+        });
       }
       combined.push(buildSnapshotFromEntry(uuid, meta, entry, options));
     }

@@ -11,6 +11,7 @@ import type {
 } from '../types.js';
 import { toArray } from '../utils/collections.js';
 import { yesNo } from '../utils/strings.js';
+import { readXmlNodeText as readNodeText } from '../utils/xml.js';
 
 interface BinderParseOptions {
   customMetaFields?: ScrivenerCustomMetaField[];
@@ -234,23 +235,6 @@ function parseBookmarks(node: any): ScrivenerBinderBookmark[] | undefined {
     }))
     .filter((bookmark) => bookmark.binderUuid || bookmark.destination || bookmark.title);
   return parsed.length ? parsed : undefined;
-}
-
-function readNodeText(node: unknown): string | undefined {
-  if (node === undefined || node === null) {
-    return undefined;
-  }
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
-    return String(node);
-  }
-  if (typeof node === 'object') {
-    const record = node as Record<string, unknown>;
-    const text = record['#text'] ?? record._cdata ?? record.CDATA ?? record.text;
-    if (typeof text === 'string' || typeof text === 'number' || typeof text === 'boolean') {
-      return String(text);
-    }
-  }
-  return undefined;
 }
 
 function parseMediaSettings(node: any): ScrivenerMediaSettings | undefined {

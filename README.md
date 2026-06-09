@@ -51,8 +51,7 @@ Returns a `ParsedScrivenerProject` with the following fields:
 | `binder` | Binder tree (`ScrivenerBinderNode[]`) |
 | `documents` | Document content keyed by UUID |
 | `metadata` | Labels, statuses, section types, custom metadata, collections |
-| `settings` | Compile settings, project preferences, UI state |
-| `compileFormats` | Compile format definitions |
+| `settings` | Compile settings, compile formats, project preferences, UI state |
 | `resources` | Styles, search index, checksums |
 | `snapshots` | Snapshots keyed by document UUID |
 | `stats` | Writing history and word count targets |
@@ -62,9 +61,11 @@ Returns a `ParsedScrivenerProject` with the following fields:
 
 ```ts
 {
-  decodeRtf?: boolean;            // Parse RTF content (default: false)
-  loadSnapshots?: boolean;        // Load snapshot files
+  decodeRtf?: boolean;            // Parse RTF text into plain text/runs (default: false)
+  loadSnapshots?: boolean;        // Load snapshot files (default: false)
+  deriveDisplayTitles?: boolean;  // Derive binder display titles from title/text (default: false)
   includeBinaryAssets?: boolean;  // Include raw binary data (icons, images)
+  extractStyleIds?: boolean;      // Read Scrivener style id sidecar files
   extractStyleSpans?: boolean;    // Extract style span positions
   extractInlineAnnotations?: boolean;
   extractLinkedImages?: boolean;
@@ -77,8 +78,15 @@ Returns a `ParsedScrivenerProject` with the following fields:
   computeTextCounts?: boolean;    // Word and character counts
   normalizeBinderSections?: boolean;
   attachBinderMetaToDocs?: boolean;
+  tolerant?: boolean;             // Continue past optional malformed files
+  diagnostics?: ScrivenerParserDiagnostic[];
 }
 ```
+
+The default project parse is intentionally lightweight and format-neutral. Pass
+`decodeRtf: true` to populate plain text, paragraphs, runs, and RTF-derived
+details. Pass `loadSnapshots: true` to include snapshot data. Binder
+`displayTitle` fields are derived only when `deriveDisplayTitles: true`.
 
 ### RTF bytes
 
@@ -102,6 +110,9 @@ const text = rtfToText(rtfBytes);
 ### Style spans
 
 `styleSpans` use stable semantic ids. When an RTF stylesheet entry matches a Scrivener style definition by name, `span.id` is the Scrivener style id and `span.name` is the Scrivener style name. When no Scrivener definition is available, `span.id` and `span.name` fall back to the canonical RTF stylesheet name. If an RTF style reference has no stylesheet entry, the parser emits deterministic names such as `rtf-s3` or `rtf-cs1` rather than raw numeric ids. Direct RTF formatting keeps renderer-neutral ids such as `rtf-bold`, `rtf-italic`, `rtf-underline`, or combined variants.
+
+Table and bookmark extraction is best-effort. These fields are useful for
+discovery, but they are not a full RTF layout model.
 
 ## Exports
 

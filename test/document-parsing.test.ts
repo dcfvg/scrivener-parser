@@ -303,6 +303,50 @@ test('parseProject keeps unmatched RTF stylesheet spans as canonical names', () 
   });
 });
 
+test('parseProject defaults to lightweight parsing without RTF decoding or snapshots', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject>
+  <Binder>
+    <BinderItem UUID="DOC-DEFAULT" Type="Text"><Title>Default doc</Title></BinderItem>
+  </Binder>
+</ScrivenerProject>`,
+    'Files/Data/DOC-DEFAULT/content.rtf': String.raw`{\rtf1\ansi Body}`,
+    'Snapshots/DOC-DEFAULT.snapshots/2025-01-01-12-00-00+0100.rtf': String.raw`{\rtf1\ansi Snapshot}`,
+  });
+
+  const project = parseProject(archive);
+  const document = project.documents['DOC-DEFAULT'];
+
+  assert.equal(document?.hasText, true);
+  assert.equal(document?.textPlain, undefined);
+  assert.equal(document?.paragraphs?.length, 0);
+  assert.deepEqual(project.snapshots, {});
+});
+
+test('parseProject derives binder display titles only when requested', () => {
+  const archive = ScrivenerArchive.fromFileMap({
+    'Mini.scrivx': String.raw`<ScrivenerProject>
+  <Binder>
+    <BinderItem UUID="DOC-TITLE" Type="Text" />
+  </Binder>
+</ScrivenerProject>`,
+    'Files/Data/DOC-TITLE/content.rtf': String.raw`{\rtf1\ansi First sentence. Second sentence.}`,
+  });
+
+  const neutral = parseProject(archive, {
+    decodeRtf: true,
+  });
+  assert.equal('displayTitle' in neutral.binder[0]!, false);
+  assert.equal('displayTitleIsDerived' in neutral.binder[0]!, false);
+
+  const derived = parseProject(archive, {
+    decodeRtf: true,
+    deriveDisplayTitles: true,
+  });
+  assert.equal(derived.binder[0]?.displayTitle, 'First sentence.');
+  assert.equal(derived.binder[0]?.displayTitleIsDerived, true);
+});
+
 test('parseProject can continue past corrupt optional files in tolerant mode', () => {
   const diagnostics: ScrivenerParserDiagnostic[] = [];
   const archive = ScrivenerArchive.fromFileMap({
@@ -318,6 +362,7 @@ test('parseProject can continue past corrupt optional files in tolerant mode', (
   });
 
   const project = parseProject(archive, {
+    decodeRtf: true,
     loadSnapshots: false,
     tolerant: true,
     diagnostics,

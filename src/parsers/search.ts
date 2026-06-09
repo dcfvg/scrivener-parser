@@ -1,28 +1,11 @@
 import { ScrivenerArchive } from '../archive/ScrivenerArchive.js';
 import type { ScrivenerSearchIndex } from '../types.js';
-import { parseXml } from '../utils/xml.js';
+import { parseXml, readXmlNodeText as readNodeText } from '../utils/xml.js';
 import { toArray } from '../utils/collections.js';
 import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 
 function joinPath(base: string, child: string): string {
   return base ? `${base.replace(/\/$/, '')}/${child}` : child;
-}
-
-function readNodeText(node: unknown): string | undefined {
-  if (node === undefined || node === null) {
-    return undefined;
-  }
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
-    return String(node);
-  }
-  if (typeof node === 'object') {
-    const record = node as Record<string, unknown>;
-    const text = record['#text'] ?? record._cdata ?? record.CDATA;
-    if (typeof text === 'string' || typeof text === 'number' || typeof text === 'boolean') {
-      return String(text);
-    }
-  }
-  return undefined;
 }
 
 export function parseSearchIndex(

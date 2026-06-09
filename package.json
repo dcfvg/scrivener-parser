@@ -25,13 +25,16 @@
     "url": "https://github.com/dcfvg/scrivener-parser/issues"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/archive/node.ts --format esm --dts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsup src/index.ts src/archive/node.ts --format esm --dts",
     "dev": "tsup src/index.ts src/archive/node.ts --watch --format esm --dts",
     "lint": "tsc --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "pack:check": "node -e \"const { spawnSync } = require('node:child_process'); const { tmpdir } = require('node:os'); const { join } = require('node:path'); const result = spawnSync('npm', ['pack', '--dry-run', '--cache', join(tmpdir(), 'scrivener-parser-npm-cache')], { stdio: 'inherit' }); process.exit(result.status ?? 1);\"",
     "demo": "tsx examples/inspect-sample.ts"
   },
   "keywords": [

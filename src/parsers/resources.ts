@@ -120,8 +120,11 @@ function parseDocsChecksum(archive: ScrivenerArchive, path: string): Array<{ pat
     .map((line) => line.trim())
     .filter((line) => Boolean(line) && line.includes('='))
     .map((line) => {
-      const [relative, checksum] = line.split('=');
-      return { path: relative, checksum };
+      const separatorIndex = line.lastIndexOf('=');
+      return {
+        path: line.slice(0, separatorIndex),
+        checksum: line.slice(separatorIndex + 1),
+      };
     });
 }
 

@@ -934,6 +934,7 @@ export interface ScrivenerParserOptions {
   decodeRtf?: boolean;
   includeBinaryAssets?: boolean;
   loadSnapshots?: boolean;
+  deriveDisplayTitles?: boolean;
   extractPlaceholders?: boolean;
   extractStyleIds?: boolean;
   extractStyleSpans?: boolean;

@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 
 import { ScrivenerArchive } from '../src/archive/ScrivenerArchive.js';
 import { parseSettings } from '../src/parsers/settings.js';
+import { yesNo } from '../src/utils/strings.js';
+import { readXmlNodeText } from '../src/utils/xml.js';
+
+test('shared XML helpers read node text and Scrivener boolean variants', () => {
+  assert.equal(readXmlNodeText({ '#text': 'Node text' }), 'Node text');
+  assert.equal(readXmlNodeText({ text: 42 }), '42');
+  assert.equal(yesNo('yes'), true);
+  assert.equal(yesNo('NO'), false);
+  assert.equal(yesNo('true'), true);
+  assert.equal(yesNo('false'), false);
+  assert.equal(yesNo('1'), true);
+  assert.equal(yesNo('0'), false);
+  assert.equal(yesNo(true), true);
+  assert.equal(yesNo(false), false);
+  assert.equal(yesNo({ '#text': 'Yes' }), true);
+  assert.equal(yesNo({ text: 'No' }), false);
+});
 
 test('parses template, script format, legacy compile, and ini compatibility files', () => {
   const archive = ScrivenerArchive.fromFileMap({

@@ -48,7 +48,11 @@ async function main() {
     process.exit(1);
   }
   const archive = await loadDirectoryAsArchive(path.resolve(inputPath));
-  const project = parseScrivenerProject(archive, { includeBinaryAssets: false });
+  const project = parseScrivenerProject(archive, {
+    decodeRtf: true,
+    loadSnapshots: true,
+    includeBinaryAssets: false,
+  });
   const rows: string[] = [];
   rows.push(
     toCsvRow([

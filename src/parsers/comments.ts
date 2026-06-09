@@ -1,5 +1,7 @@
 import type { ScrivenerComment } from '../types.js';
 import { toArray } from '../utils/collections.js';
+import { yesNo } from '../utils/strings.js';
+import { readXmlNodeText as readNodeText } from '../utils/xml.js';
 import { tryOptionalParse, type ParserDiagnosticSink } from '../utils/diagnostics.js';
 import { parseRtfContent, type ParsedRtfContent } from './rtf-content.js';
 
@@ -21,36 +23,12 @@ interface ScrivenerCommentParsingContext {
   documentId?: string;
 }
 
-export function readNodeText(node: unknown): string | undefined {
-  if (node === undefined || node === null) {
-    return undefined;
-  }
-  if (typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') {
-    return String(node);
-  }
-  if (typeof node === 'object') {
-    const record = node as Record<string, unknown>;
-    const text = record['#text'] ?? record._cdata ?? record.CDATA ?? record.text;
-    if (typeof text === 'string' || typeof text === 'number' || typeof text === 'boolean') {
-      return String(text);
-    }
-  }
-  return undefined;
-}
-
 export function hasScrivenerCommentNodes(node: unknown): boolean {
   if (!node || typeof node !== 'object') {
     return false;
   }
   const record = node as Record<string, unknown>;
   return record.Comment !== undefined || record.comment !== undefined;
-}
-
-function parseYesNoFlag(value: unknown): boolean | undefined {
-  if (typeof value !== 'string') return undefined;
-  if (value === 'Yes') return true;
-  if (value === 'No') return false;
-  return undefined;
 }
 
 function parseOptionalNumber(value: unknown): number | undefined {
@@ -99,9 +77,9 @@ export function parseScrivenerCommentNodes(
       id: String(comment.ID ?? comment.Id ?? ''),
       author: comment.Author,
       color: comment.Color,
-      isFootnote: parseYesNoFlag(comment.Footnote),
+      isFootnote: yesNo(comment.Footnote),
       number: parseOptionalNumber(comment.Number),
-      collapsed: parseYesNoFlag(comment.Collapsed),
+      collapsed: yesNo(comment.Collapsed),
       rawRtf,
       text: parsed?.plainText,
       textWordCount: parsed?.textWordCount,
